@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Selene — Planet Map Generator</title>
+<link rel="stylesheet" href="css/selene.css">
+</head>
+<body>
+<header id="top">
+  <div class="brand"><span class="logo">◐</span> Selene <small>planet height &amp; colour maps</small></div>
+  <div class="bar">
+    <label>World type <select id="preset"></select></label>
+    <label>Seed <input id="seed" type="text" size="10"></label>
+    <button id="dice" title="Random seed">⚄</button>
+    <label>Resolution <select id="res"></select></label>
+    <button id="gen" class="primary">Generate</button>
+    <div id="progress"><div id="progfill"></div><span id="progtxt">Ready</span></div>
+  </div>
+</header>
+<main>
+  <aside id="params"><div id="presetDesc" class="desc"></div><div id="groups"></div></aside>
+  <section id="stage">
+    <canvas id="view"></canvas>
+    <div id="viewbar">
+      <div class="seg" id="viewMode"><button data-v="0" class="on">Globe</button><button data-v="1">Map</button></div>
+      <select id="layer">
+        <option value="1" selected>Lit (preview lighting)</option>
+        <option value="0">Colour map</option>
+        <option value="2">Height map</option>
+        <option value="3">Shaded relief</option>
+        <option value="4">Normal map</option>
+        <option value="5">Emission</option>
+      </select>
+      <label>Relief ×<input id="exag" type="range" min="0" max="40" step="0.5" value="6"></label>
+      <label>Sun<input id="sun" type="range" min="-3.14" max="3.14" step="0.01" value="-1.75"></label>
+      <label><input id="spin" type="checkbox" checked> Rotate</label>
+    </div>
+    <div id="stats"></div>
+    <div id="empty">Choose a world type and press <b>Generate</b>.<br><small>Drag to rotate · scroll to zoom · Map view shows exactly what gets exported.</small></div>
+  </section>
+  <aside id="export">
+    <h3>Export</h3>
+    <label>Planet name <input id="exName" type="text" value="Selene"></label>
+    <label>Map width <select id="exW"></select></label>
+    <label>In-game radius (km) <input id="exRadius" type="number" step="1" value="600"></label>
+    <label>Height scale <input id="exHScale" type="number" step="0.01" value="1"> <button id="exAuto" title="Scale relief to the in-game radius">auto</button></label>
+    <label>Longitude offset (°) <input id="exLon" type="number" step="1" value="0"></label>
+    <label>Normal strength <input id="exNorm" type="number" step="0.1" value="1"></label>
+    <fieldset>
+      <legend>Maps</legend>
+      <label><input type="checkbox" id="mColor" checked> Colour (RGB PNG)</label>
+      <label><input type="checkbox" id="mH16" checked> Height 16-bit PNG</label>
+      <label><input type="checkbox" id="mH8" checked> Height 8-bit PNG (dithered)</label>
+      <label><input type="checkbox" id="mNormal" checked> Normal map (OpenGL)</label>
+      <label><input type="checkbox" id="mSpec"> Specular / ocean mask</label>
+      <label><input type="checkbox" id="mEmit" checked> Emission (lava worlds)</label>
+      <label><input type="checkbox" id="mKsp" checked> Kopernicus config</label>
+      <label><input type="checkbox" id="mBlender" checked> Blender import script</label>
+    </fieldset>
+    <button id="exGo" class="primary">Export ZIP</button>
+    <div id="exProg"></div>
+    <hr>
+    <button id="saveCfg">Save settings…</button>
+    <label class="filebtn">Load settings…<input type="file" id="loadCfg" accept=".json"></label>
+    <p class="hint">All maps are equirectangular (2:1), column 0 = 180°W, top row = north pole. Heights in the 16-bit map span the min…max listed in <i>info.txt</i>.</p>
+  </aside>
+</main>
+<div id="error" hidden></div>
+
+<script src="js/core/glsl.js"></script>
+<script src="js/core/glsl_planet.js"></script>
+<script src="js/core/gl.js"></script>
+<script src="js/gen/ops.js"></script>
+<script src="js/presets.js"></script>
+<script src="js/gen/terrain.js"></script>
+<script src="js/gen/landforms.js"></script>
+<script src="js/gen/erosion.js"></script>
+<script src="js/gen/climate.js"></script>
+<script src="js/gen/surface.js"></script>
+<script src="js/gen/pipeline.js"></script>
+<script src="js/export/export.js"></script>
+<script src="js/export/integrations.js"></script>
+<script src="js/ui/preview.js"></script>
+<script src="js/ui/ui.js"></script>
+</body>
+</html>
