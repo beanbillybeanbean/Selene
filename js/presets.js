@@ -302,7 +302,7 @@
       heightColor: 0.5, regional: 0.5, regional2: 0.4, cliffColor: 0.3, curvatureColor: 0.12,
       colors: { low: '#2a2522', high: '#3e3733', alt: '#4b433d', alt2: '#1a1716', polar: '#3e3733', hemi: '#3e3733', cliff: '#5a5048', dark: '#151313', second: '#6b3b28', bright: '#77716a', ice: '#ffffff', lava: '#2a0d05' } } },
     exotic: { name: 'Fractured exotic', desc: 'Richly detailed alien crust: stepped plateaus with lobate escarpments, cracked plates with raised lips, rubble everywhere, purple–orange mineral colours.', p: {
-      microRelief: 150, unitScale: 200,
+      microRelief: 60, unitScale: 200, colorFray: 0.4, reliefColor: 0.8,
       geoRadius: 3000, landFraction: 0.55, highlandHeight: 800, lowlandHeight: -800, undulation: 900, roughness: 700, hillScale: 120, erodedLook: 2,
       scarps: 1100, scarpScale: 260, scarpLevels: 5, scarpLip: 0.6, cracks: 180, crackScale: 180, crackCover: 0.4, rubble: 160, riftBelt: 1200, flowUnits: 0.3, flowScale: 250,
       craters: true, craterDensity: 0.05, oldCraters: 0.1, craterMax: 120,
