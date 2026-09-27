@@ -27,7 +27,8 @@ uniform vec4 uF[MAXF]; uniform vec4 uFP[MAXF]; uniform int uFCount;
 uniform float uBaseFreq, uBaseWarp, uDicho, uHighH, uLowH, uTrans, uLowRough, uBaseAmp;
 uniform vec3 uDichoDir;
 uniform float uHillsAmp, uHillsScale, uErode, uMontesAmp, uMontesScale, uMontesCover;
-uniform float uGrooveBright, uRiftBelt;
+uniform float uPatchy, uMariaCraters;
+uniform float uGrooveBright, uRiftBelt, uFlowUnits, uFlowScale;
 uniform float uLowCraters, uBrightFrac, uLinNet, uLinScale, uLinWidth, uLaneAmp, uLaneScale, uLaneWidth, uLaneGrooves, uFracLow, uLaneCover;
 uniform float uCraterDens, uOldCraters, uCraterMax, uCraterFresh, uDt, uCraterSfd, uFloorDark, uEjecta, uCraterAmp;
 uniform float uCanyonAmp, uCanyonScale, uCanyonCover;
@@ -81,6 +82,8 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       vec3 dv = p - cd;
       if (dot(dv, dv) > sq(rr * 3.2)) continue;
       if (lowK < 1.0 && hh.x > dO * mix(lowK, 1.0, sstep(-uTrans, uTrans, provincesLo(cd)))) continue;   // sparser on young lowland plains
+      if (uStage == 1 && uMariaCraters < 1.0 && hh.x > dO * mix(1.0, uMariaCraters, sampleDir(uMin, cd).g)) continue; // young maria: fewer craters
+      if (uPatchy > 0.0 && hh.x > dO * mix(1.0 - uPatchy, 1.0, sstep(-0.25, 0.25, fbm(cd * 3.0 + SO * 0.3, 3)))) continue; // regional surface ages
       float dist = gcDist(p, cd);
       float Dkm = 2.0 * rr * uR * 0.001;
       float fresh = pow(hh.z, freshExp);
@@ -160,17 +163,18 @@ void listFeatures(vec3 p, int stage, inout float h, inout vec4 m) {
       float ang = azimuth(p, c);
       float sculpt = depth * 0.08 * sstep(3.0, 1.2, d) * sstep(0.95, 1.2, d) * (0.5 + ridged(vec3(ang * 4.0, d * 3.0, float(i)), 3));
       h += bowl + rim + ring + sculpt;
-    } else if (t == 2) {                      // giant shield volcano. B = (type, height, caldera, scarp)
-      if (stage != 0 || d > 4.5) continue;
+    } else if (t == 2) {                      // giant shield volcano (young: built after erosion). B = (type, height, caldera, scarp)
+      if (stage != 1 || d > 4.5) continue;
       float ang = azimuth(p, c);
       // lobate lava-flow fields radiating from the edifice (radar-bright/dark flows on Venus, dark on Mars)
       vec2 cs = vec2(cos(ang), sin(ang));
-      float reach = 1.6 + 2.6 * (0.5 + 0.5 * snoise(vec3(cs * 2.2, float(i) * 3.1)));
-      float tongue = sstep(0.05, 0.35, snoise(vec3(cs * 7.0, d * 0.9 + float(i))) + 0.25 * snoise(p * fr(25.0))) * sstep(reach, reach * 0.8, d) * sstep(0.6, 1.0, d);
-      float kindF = step(0.0, snoise(vec3(cs * 4.0, d * 0.5 - float(i))));
-      m.g = max(m.g, tongue * (1.0 - kindF) * 0.7);
-      m.r = max(m.r, tongue * kindF * 0.25);
-      h += 60.0 * tongue;
+      float reach = 1.5 + 2.2 * (0.5 + 0.5 * snoise(vec3(cs * 1.6, float(i) * 3.1)));
+      float lobe = snoise(vec3(cs * 2.8, d * 0.45 + float(i))) + 0.35 * fbm(p * fr(40.0) + float(i), 4);
+      float tongue = sstep(-0.1, 0.05, lobe) * sstep(reach, reach * 0.85, d + 0.15 * snoise(p * fr(60.0))) * sstep(0.7, 1.0, d);
+      float kindF = step(0.0, snoise(vec3(cs * 2.0, d * 0.3 - float(i))));
+      m.g = max(m.g, tongue * (1.0 - kindF) * 0.4);
+      m.r = max(m.r, tongue * kindF * 0.15);
+      h += 50.0 * tongue;
       if (d > 1.6) continue;
       float flows = ridged(vec3(ang * 18.0, d * 6.0, float(i)), 4);
       float cone = pow(sat(1.0 - d), 1.25) * (1.0 + 0.04 * flows);
@@ -365,6 +369,22 @@ void main() {
       float laneTone = 0.65 + 0.35 * fract((lane >= lane2 ? c.id + c.id2 : c2.id * 3.0 + c2.id2) * 17.3);
       m.b = max(m.b, L * laneTone * (0.8 + 0.2 * gro) * (0.9 + 0.1 * snoise(q * 12.0)));
     }
+    // lobate lava-flow units on the plains: sharp-edged sheets, alternately dark and bright,
+    // each standing a few tens of metres proud with a steep flow front
+    if (uFlowUnits > 0.0) {
+      float lowMask = 1.0 - 0.8 * sstep(-uTrans, uTrans, provincesLo(p));
+      for (int k = 0; k < 3; k++) {
+        vec3 q = p * fr(uFlowScale / (1.0 + float(k))) + SO * float(k + 3);
+        q += 0.6 * warpVec(q * 0.5, 3);
+        float nF = fbm(q, min(5, octaves(fr(uFlowScale / (1.0 + float(k))), uTex)), 2.2, 0.55);
+        float th = 0.55 - uFlowUnits * 0.9;
+        float unit = sstep(th, th + 0.015, nF) * lowMask;
+        if (unit <= 0.0) continue;
+        h += 45.0 * unit / (1.0 + float(k));
+        float tone = fract(float(k) * 0.37 + 0.2 * fbm(q * 0.2, 2));
+        if (tone < 0.5) m.g = max(m.g, unit * (0.35 + 0.3 * tone)); else m.r = max(m.r, unit * 0.18);
+      }
+    }
     // fracture networks: polygonal troughs at several scales
     if (uCrackAmp > 0.0) {
       float f = fr(uCrackScale);
@@ -462,16 +482,17 @@ void main() {
       float lv = uLavaLevel;
       if (h < lv) {
         float depth = lv - h;
-        Cell c = cellular(p * fr(90.0) + SO, 66u);
-        float crust = sstep(0.0, 0.12, cellEdge(c, p * fr(90.0) + SO));
+        vec3 qc = p * fr(220.0) + SO + 0.3 * warpVec(p * fr(900.0), 2);
+        Cell c = cellular(qc, 66u);
+        float crust = sstep(0.0, 0.06, cellEdge(c, qc) + 0.02 * snoise(qc * 6.0));
         h = lv - 30.0 * crust;
         m.g = max(m.g, crust);
         m.a = max(m.a, (1.0 - crust * 0.85) * sstep(0.0, 200.0, depth));
       }
       if (uLavaCracks > 0.0) {
-        vec3 q = p * fr(40.0) + 0.4 * warpVec(p * 6.0 + SO, 3);
+        vec3 q = p * fr(160.0) + 0.4 * warpVec(p * 6.0 + SO, 3);
         Cell c = cellular(q, 71u);
-        float glow = sstep(0.07, 0.0, cellEdge(c, q)) * sstep(0.2, 0.6, 0.5 + fbm(p * 3.0 - SO, 3));
+        float glow = sstep(0.035, 0.0, cellEdge(c, q) + 0.01 * snoise(q * 8.0)) * sstep(0.3, 0.7, 0.5 + fbm(p * 3.0 - SO, 3)) * step(0.45, fract(c.id * 7.0 + c.id2 * 3.0));
         m.a = max(m.a, uLavaCracks * glow);
       }
     }
@@ -548,7 +569,7 @@ void main() {
       uEjecta: n(P.ejectaBright, 1), uCraterAmp: n(P.craterDepth, 1),
       uCanyonAmp: n(P.canyonNet), uCanyonScale: n(P.canyonScale, 900), uCanyonCover: n(P.canyonCover, 0.2),
       uCrackAmp: n(P.cracks), uCrackScale: n(P.crackScale, 300), uCrackCover: n(P.crackCover, 0.5),
-      uGrooveAmp: n(P.grooves), uGrooveScale: n(P.grooveSpacing, 8), uGrooveCover: n(P.grooveCover, 0.5), uGroovePatch: n(P.groovePatch, 400), uGrooveBright: n(P.grooveBright, 0.35), uRiftBelt: n(P.riftBelt),
+      uGrooveAmp: n(P.grooves), uGrooveScale: n(P.grooveSpacing, 8), uGrooveCover: n(P.grooveCover, 0.5), uGroovePatch: n(P.groovePatch, 400), uGrooveBright: n(P.grooveBright, 0.35), uRiftBelt: n(P.riftBelt), uPatchy: n(P.craterPatchiness), uMariaCraters: n(P.mariaCraters, 1), uFlowUnits: n(P.flowUnits), uFlowScale: n(P.flowScale, 500),
       uChaosAmp: n(P.chaos), uChaosCover: n(P.chaosCover, 0.15), uChaosScale: n(P.chaosBlock, 30),
       uTessAmp: n(P.tesserae), uTessCover: n(P.tesseraeCover, 0.15), uWrinkle: n(P.wrinkleRidges), uShieldDens: n(P.shieldFields), uShieldAmp: n(P.shieldHeight, 800),
       uPateraDens: n(P.paterae) / 200, uPateraAmp: n(P.pateraDepth, 800), uMtnAmp: n(P.blockMountains), uMtnCover: n(P.blockCover, 0.08),

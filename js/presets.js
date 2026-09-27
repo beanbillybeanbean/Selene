@@ -61,6 +61,7 @@
     b('Craters', 'craters', 'Impact craters', { show: W }),
     r('Craters', 'craterDensity', 'Young crater density', 0, 1, 0.005, { show: w((P) => P.craters) }),
     r('Craters', 'oldCraters', 'Ancient crater density', 0, 1, 0.005, { show: w((P) => P.craters), help: 'Degraded craters from the early bombardment (softened by later erosion).' }),
+    r('Craters', 'craterPatchiness', 'Regional age patchiness', 0, 1, 0.01, { show: w((P) => P.craters), help: 'Some regions were resurfaced later and carry fewer craters.' }),
     r('Craters', 'lowlandCraters', 'Crater density on lowlands', 0, 1, 0.01, { show: w((P) => P.craters) }),
     r('Craters', 'craterMax', 'Largest crater (km)', 10, 2500, 5, { show: w((P) => P.craters) }),
     r('Craters', 'craterFreshness', 'Crater age bias', 0.2, 4, 0.05, { show: w((P) => P.craters), help: 'Higher = more old, degraded craters.' }),
@@ -72,6 +73,7 @@
     i('Craters', 'basins', 'Giant impact basins', 0, 20, { show: W }),
     r('Craters', 'basinDepth', 'Basin depth (m)', 500, 12000, 50, { show: w((P) => P.basins > 0) }),
     r('Craters', 'basinFlood', 'Share of basins lava-flooded', 0, 1, 0.01, { show: w((P) => P.basins > 0) }),
+    r('Craters', 'mariaCraters', 'Crater density on maria', 0, 1, 0.01, { show: w((P) => P.craters && (P.maria > 0 || P.basinFlood > 0)) }),
     r('Craters', 'maria', 'Lava-flooded maria / plains', 0, 1, 0.01, { show: W }),
     r('Craters', 'mareLevel', 'Flooding level (m)', -8000, 3000, 50, { show: w((P) => P.maria > 0) }),
     i('Craters', 'rayed', 'Young rayed craters', 0, 30, { show: W }),
@@ -90,6 +92,8 @@
     i('Volcanism', 'coronae', 'Coronae (Venus)', 0, 40, { show: W }),
     r('Volcanism', 'tesserae', 'Tessera highlands (m)', 0, 5000, 10, { show: W }),
     r('Volcanism', 'tesseraeCover', 'Tessera coverage', 0, 0.6, 0.01, { show: w((P) => P.tesserae > 0) }),
+    r('Volcanism', 'flowUnits', 'Lava flow fields on plains', 0, 1, 0.01, { show: W, help: 'Sharp-edged lobate flow sheets of alternating tone.' }),
+    r('Volcanism', 'flowScale', 'Flow field size (km)', 30, 3000, 10, { show: w((P) => P.flowUnits > 0) }),
     r('Volcanism', 'wrinkleRidges', 'Wrinkle ridges (m)', 0, 600, 5, { show: W }),
     i('Volcanism', 'paterae', 'Paterae (Io calderas)', 0, 200, { show: W }),
     r('Volcanism', 'pateraDepth', 'Patera depth (m)', 50, 3000, 10, { show: w((P) => P.paterae > 0) }),
@@ -136,6 +140,7 @@
     r('Erosion', 'erosionStrength', 'River incision strength', 0.1, 6, 0.05, { show: (P) => P.erosion }),
     r('Erosion', 'flowExponent', 'Flow concentration', 1, 8, 0.1, { show: (P) => P.erosion }),
     r('Erosion', 'hillslope', 'Hillslope creep', 0, 0.25, 0.005, { show: (P) => P.erosion }),
+    r('Erosion', 'fillRate', 'Basin infill per step (m)', 0, 50, 0.1, { show: w((P) => P.erosion), help: 'How fast closed depressions (craters, basins) fill with sediment. Earth-like worlds fill them completely.' }),
     r('Erosion', 'talus', 'Max stable slope', 0.1, 2, 0.01, { show: (P) => P.erosion }),
     r('Erosion', 'uplift', 'Ongoing uplift', 0, 5, 0.05, { show: t((P) => P.erosion) }),
 
@@ -198,7 +203,7 @@
 
   // non-Earth worlds share the landform + layered-material model; unset values fall back to BASE_WORLD
   const BASE_WORLD = {
-    model: 'world', ocean: false, tectonics: false, erosion: false, landFraction: 0.5,
+    model: 'world', ocean: false, tectonics: false, erosion: false, landFraction: 0.5, fillRate: 1.5,
     continentScale: 1.3, continentWarp: 0.8, dichotomy: 0, highlandHeight: 1000, lowlandHeight: -1000, provinceSharpness: 0.08,
     lowlandRoughness: 0.4, undulation: 600, roughness: 500, hillScale: 250, erodedLook: 1.0,
     mountainHeight: 0, mountainScale: 180, mountainCover: 0.3, scarps: 0, scarpScale: 600, scarpLevels: 3, scarpLip: 0.3, rubble: 0,
@@ -211,7 +216,7 @@
     tesserae: 0, tesseraeCover: 0.15, coronae: 0, wrinkleRidges: 0, shieldFields: 0, shieldHeight: 800,
     paterae: 0, pateraDepth: 800, bigPaterae: 0, plumes: 0, blockMountains: 0, blockCover: 0.08,
     brightCraters: 0.02, basinFlood: 0, lineaeNet: 0, lineaeScale: 400, lineaeWidth: 4, lanes: 0, laneCover: 0.7, grooveBright: 0.35, laneScale: 900, laneWidth: 0.12, laneGrooves: 35,
-    fracturesInLowlands: 0, redPlumes: 1, riftBelt: 0, polarSide: 0, lowlandCraters: 1,
+    fracturesInLowlands: 0, redPlumes: 1, riftBelt: 0, polarSide: 0, craterPatchiness: 0, mariaCraters: 1, flowUnits: 0, flowScale: 500, lowlandCraters: 1,
     dunes: 0, terraces: 0, lavaSea: false, lavaLevel: -500, lavaCracks: 0, emissive: false,
     iceCaps: false, capSize: 8, capHeight: 2500,
     heightColor: 0.6, colorDistortion: 1, regional: 0.5, regionalScale: 2.5, regionalTopo: 0, regional2: 0.3,
@@ -223,7 +228,7 @@
     mars: { name: 'Mars-like', desc: 'Cratered southern highlands, smooth northern plains, Tharsis-style giant volcanoes, a Valles-style canyon, ancient valley networks, dust and dark sand, polar layered caps.', p: {
       geoRadius: 3390, landFraction: 0.6, continentScale: 0.8, continentWarp: 0.6, dichotomy: 0.7, highlandHeight: 1800, lowlandHeight: -3800, provinceSharpness: 0.12, lowlandRoughness: 0.25,
       undulation: 1400, roughness: 900, hillScale: 300, erodedLook: 1.6, mountainHeight: 1200, mountainScale: 140, mountainCover: 0.15,
-      craters: true, craterDensity: 0.3, oldCraters: 0.75, lowlandCraters: 0.25, craterMax: 260, craterFreshness: 1.3, transitionDiameter: 7, floorDark: 0.7, ejectaBright: 0.25,
+      craters: true, craterDensity: 0.12, oldCraters: 0.75, lowlandCraters: 0.2, craterPatchiness: 0.6, craterMax: 260, craterFreshness: 1.3, transitionDiameter: 7, floorDark: 0.7, ejectaBright: 0.25,
       basins: 2, basinDepth: 6500, rises: 1, riseSize: 2600, riseHeight: 5500, giantVolcanoes: 4, volcanoHeight: 21000, volcanoScarp: 0.35,
       canyons: 1, canyonLength: 3800, erosion: true, erosionIterations: 140, erosionStrength: 0.9, flowExponent: 3, hillslope: 0.01, talus: 1.2, uplift: 0, dunes: 25,
       iceCaps: true, capSize: 7, capHeight: 2500, terraces: 0.15,
@@ -234,19 +239,19 @@
       tesserae: 1800, tesseraeCover: 0.13, coronae: 18, shieldFields: 0.35, shieldHeight: 500, wrinkleRidges: 160, rises: 3, riseSize: 2200, riseHeight: 3000,
       giantVolcanoes: 5, volcanoHeight: 8000, volcanoScarp: 0, volcanoWidth: 1.3, canyons: 3, canyonLength: 3200,
       craters: true, craterDensity: 0.025, craterMax: 270, transitionDiameter: 3, floorDark: 0.9, ejectaBright: 0.5,
-      scarps: 250, scarpScale: 900, scarpLevels: 2, scarpLip: 0.15, rubble: 40,
+      scarps: 250, scarpScale: 900, scarpLevels: 2, scarpLip: 0.15, rubble: 40, flowUnits: 0.45, flowScale: 700,
       heightColor: 0.5, regional: 0.5, regional2: 0.5, cliffColor: 0.25, curvatureColor: 0.08,
       colors: { low: '#7b5a3c', high: '#8f6d4a', alt: '#9c7c54', alt2: '#5a432f', polar: '#8f6d4a', hemi: '#8f6d4a', cliff: '#a88a66', dark: '#4a3626', second: '#b39570', bright: '#c7a67c', ice: '#ffffff', lava: '#300c04' } } },
     moon: { name: 'Moon-like', desc: 'Saturated cratered highlands, multi-ring basins flooded by dark maria, bright rayed young craters.', p: {
       geoRadius: 1737, landFraction: 0.75, dichotomy: 0.12, highlandHeight: 1500, lowlandHeight: -2200, lowlandRoughness: 0.5, undulation: 1500, roughness: 1100, hillScale: 400, erodedLook: 0.3,
-      craters: true, craterDensity: 0.6, oldCraters: 0.9, craterMax: 480, transitionDiameter: 18, craterFreshness: 1.0, ejectaBright: 1, brightCraters: 0.012, craterDepth: 0.8,
+      craters: true, craterDensity: 0.6, oldCraters: 0.9, craterMax: 480, transitionDiameter: 18, craterFreshness: 1.0, ejectaBright: 1, brightCraters: 0.012, craterDepth: 0.8, mariaCraters: 0.25,
       basins: 10, basinDepth: 5000, basinFlood: 0.6, maria: 0.12, mareLevel: -2100, rayed: 7, rayedSize: 90, rayBrightness: 1,
       heightColor: 0.3, regional: 0.3, regional2: 0.35, regionalScale: 3, cliffColor: 0.35, curvatureColor: 0.06, colorVariation: 0.6,
       colors: { low: '#8b8781', high: '#9c9892', alt: '#a8a39b', alt2: '#7c7873', polar: '#9c9892', hemi: '#9c9892', cliff: '#b3aea6', dark: '#4e4b48', second: '#5a5652', bright: '#d8d4cc', ice: '#ffffff', lava: '#000000' } } },
     mercury: { name: 'Mercury-like', desc: 'Dark, heavily cratered crust with smooth volcanic plains, long lobate thrust scarps and bright rayed craters.', p: {
       geoRadius: 2440, landFraction: 0.7, highlandHeight: 1200, lowlandHeight: -1800, undulation: 1300, roughness: 900, hillScale: 350, erodedLook: 0.3,
       craters: true, craterDensity: 0.55, oldCraters: 0.85, craterMax: 400, transitionDiameter: 10, ejectaBright: 1,
-      basins: 4, basinDepth: 4000, basinFlood: 0.5, maria: 0.3, mareLevel: -1400, brightCraters: 0.015, craterDepth: 0.8, rayed: 9, rayedSize: 80, scarps: 900, scarpScale: 700, scarpLevels: 2, scarpLip: 0.1,
+      basins: 4, basinDepth: 4000, basinFlood: 0.5, maria: 0.3, mareLevel: -1400, mariaCraters: 0.4, brightCraters: 0.015, craterDepth: 0.8, rayed: 9, rayedSize: 80, scarps: 900, scarpScale: 700, scarpLevels: 2, scarpLip: 0.1,
       heightColor: 0.3, regional: 0.35, regional2: 0.3, cliffColor: 0.3, curvatureColor: 0.06, colorVariation: 0.6,
       colors: { low: '#6f6a64', high: '#7a746d', alt: '#857e75', alt2: '#5f5b57', polar: '#7a746d', hemi: '#7a746d', cliff: '#948d84', dark: '#77726b', second: '#4c4845', bright: '#c7c5c2', ice: '#ffffff', lava: '#000000' } } },
     europa: { name: 'Europa-like', desc: 'Young ice shell: ridged plains, long double-ridge lineae, reddish chaos terrain, few craters, darker trailing hemisphere.', p: {
@@ -274,12 +279,12 @@
     lava: { name: 'Lava world', desc: 'Black and grey basalt crust over a molten interior: lava seas in the lowlands, glowing fissure networks, fresh flows and volcanoes. Exports an emission map.', p: {
       geoRadius: 5000, landFraction: 0.55, highlandHeight: 1500, lowlandHeight: -1200, undulation: 900, roughness: 700, hillScale: 150, erodedLook: 2,
       scarps: 400, scarpScale: 400, scarpLevels: 3, scarpLip: 0.3, rubble: 120, cracks: 250, crackScale: 200, crackCover: 0.6,
-      lavaSea: true, lavaLevel: -300, lavaCracks: 0.7, giantVolcanoes: 4, volcanoHeight: 9000, shieldFields: 0.3, shieldHeight: 700, emissive: true,
+      lavaSea: true, lavaLevel: 150, lavaCracks: 0.7, flowUnits: 0.5, flowScale: 300, giantVolcanoes: 4, volcanoHeight: 9000, shieldFields: 0.3, shieldHeight: 700, emissive: true,
       heightColor: 0.5, regional: 0.5, regional2: 0.4, cliffColor: 0.3, curvatureColor: 0.12,
       colors: { low: '#2a2522', high: '#3e3733', alt: '#4b433d', alt2: '#1a1716', polar: '#3e3733', hemi: '#3e3733', cliff: '#5a5048', dark: '#151313', second: '#6b3b28', bright: '#77716a', ice: '#ffffff', lava: '#2a0d05' } } },
     exotic: { name: 'Fractured exotic', desc: 'Richly detailed alien crust: stepped plateaus with lobate escarpments, cracked plates with raised lips, rubble everywhere, purple–orange mineral colours.', p: {
       geoRadius: 3000, landFraction: 0.55, highlandHeight: 800, lowlandHeight: -800, undulation: 900, roughness: 700, hillScale: 120, erodedLook: 2,
-      scarps: 700, scarpScale: 500, scarpLevels: 4, scarpLip: 0.5, cracks: 260, crackScale: 260, crackCover: 0.75, rubble: 160,
+      scarps: 1100, scarpScale: 260, scarpLevels: 5, scarpLip: 0.6, cracks: 180, crackScale: 180, crackCover: 0.4, rubble: 160, riftBelt: 1200, flowUnits: 0.3, flowScale: 250,
       craters: true, craterDensity: 0.05, oldCraters: 0.1, craterMax: 120,
       heightColor: 0.6, regional: 0.55, regional2: 0.4, polarTint: 0.6, polarLat: 0.6, cliffColor: 0.5, curvatureColor: 0.25, colorVariation: 1.3,
       colors: { low: '#553766', high: '#7a4f7a', alt: '#b27b3a', alt2: '#6a4a38', polar: '#c89042', hemi: '#7a4f7a', cliff: '#b8b0d2', dark: '#2a1e30', second: '#9bbccb', bright: '#78d0cf', ice: '#ffffff', lava: '#000000' } } },

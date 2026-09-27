@@ -102,9 +102,9 @@ void main() {
     // regional albedo provinces: soft, blotchy, optionally tied to topography
     // large soft shapes; fine octaves only fray the edges
     float reg = warped(dp * uRegScale + so * 1.7, 3, 0.45) + 0.16 * fbm(dp * uRegScale * 6.0 + so, 5) + uRegTopo * (hn - 0.5) + 0.12 * dist;
-    c = mix(c, uC[2], sstep(-0.12, 0.25, reg) * uRegional);
+    c = mix(c, uC[2], sstep(-0.3, 0.35, reg) * uRegional);
     float reg2 = warped(dp * uRegScale * 1.3 - so * 2.3, 3, 0.45) + 0.16 * fbm(dp * uRegScale * 7.0 - so, 5) - 0.08 * dist;
-    c = mix(c, uC[3], sstep(0.02, 0.35, reg2) * uRegional2);
+    c = mix(c, uC[3], sstep(-0.1, 0.4, reg2) * uRegional2);
     // dust settles in lows (or highs when negative)
     c = mix(c, uC[2], sat(uDustLow * (0.5 - hn) * 2.0) * 0.6);
     // latitude and hemisphere tints
@@ -120,7 +120,7 @@ void main() {
     c = mix(c, uC[9], sat(m.r * uBrightK));
     if (uEmissive > 0.5) {
       float heat = sat(m.a);
-      c = mix(c, uC[11], sstep(0.05, 0.6, heat));
+      c = mix(c, uC[11], sstep(0.3, 0.8, heat));
       em = blackbody(heat) * sstep(0.02, 0.2, heat) * (0.7 + 0.3 * micro);
     } else {
       c = mix(c, uC[10] * (0.93 + 0.07 * micro), sat(m.a * uIceK));
