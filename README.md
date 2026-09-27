@@ -2,7 +2,7 @@
 
 Selene generates realistic, seamless planet maps for **KSP (Kopernicus)** and **Blender**:
 16-bit height maps, colour (albedo) maps, normal maps and emission maps. It is built for rocky,
-icy and volcanic worlds such as Mars, Venus, the Moon, Mercury, Europa, Enceladus, Ganymede, Io and lava worlds.
+icy and volcanic worlds. The presets are Mars, Venus, the Moon, Mercury, Europa, Enceladus, Ganymede, Charon, Io, a lava world, and a fractured exotic world. Every parameter is editable.
 An Earth-like generator is included too.
 
 Everything runs on your GPU in the browser. There is nothing to install.
