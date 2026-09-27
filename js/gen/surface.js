@@ -23,6 +23,7 @@ uniform vec3 uDeep, uMid, uShelf, uReef, uSeaIce, uSand, uRed, uDarkRock, uPale,
 uniform float uVegK, uSnowBias, uRiverK;
 // world palette + controls
 uniform vec3 uC[12];
+uniform float uPolarSide;
 uniform float uHeightK, uColorDist, uRegional, uRegScale, uRegTopo, uRegional2, uPolarK, uPolarLat, uHemiK;
 uniform vec3 uHemiDir;
 uniform float uSlopeK, uCurvK, uDarkK, uSecondK, uBrightK, uIceK, uEmissive, uMottle, uDustLow;
@@ -107,8 +108,8 @@ void main() {
     // dust settles in lows (or highs when negative)
     c = mix(c, uC[2], sat(uDustLow * (0.5 - hn) * 2.0) * 0.6);
     // latitude and hemisphere tints
-    float lat = abs(p.y);
-    c = mix(c, uC[4], sstep(uPolarLat, 1.0, lat + 0.08 * dist) * uPolarK);
+    float lat = uPolarSide == 0.0 ? abs(p.y) : p.y * uPolarSide;
+    c = mix(c, uC[4], sstep(uPolarLat, 1.0, lat + 0.1 * dist + 0.1 * fbm(dp * 6.0 + so, 4) + 0.12 * fbm(dp * 2.5 - so, 3)) * uPolarK);
     c = mix(c, uC[5], sstep(-0.2, 0.9, dot(p, uHemiDir) + 0.2 * dist) * uHemiK);
     // relief-following colour: cliffs, ridges, hollows
     c = mix(c, uC[6], sstep(0.12, 0.5, slope) * uSlopeK);
@@ -156,7 +157,7 @@ void main() {
       uVegK: n(P.vegetation, 1), uSnowBias: n(P.snowBias), uRiverK: n(P.riverGreen, 1),
       uHmin: ctx.hmin ?? -5000, uHmax: ctx.hmax ?? 5000,
       uHeightK: n(P.heightColor, 1), uColorDist: n(P.colorDistortion, 1), uRegional: n(P.regional), uRegScale: n(P.regionalScale, 2.5),
-      uRegTopo: n(P.regionalTopo), uRegional2: n(P.regional2), uPolarK: n(P.polarTint), uPolarLat: n(P.polarLat, 0.7),
+      uRegTopo: n(P.regionalTopo), uRegional2: n(P.regional2), uPolarK: n(P.polarTint), uPolarLat: n(P.polarLat, 0.7), uPolarSide: n(P.polarSide),
       uHemiK: n(P.hemiTint), uHemiDir: P.hemiDir || hd, uSlopeK: n(P.cliffColor), uCurvK: n(P.curvatureColor),
       uDarkK: n(P.darkMaterial, 1), uSecondK: n(P.secondMaterial, 1), uBrightK: n(P.brightMaterial, 1), uIceK: n(P.iceMaterial, 1),
       uEmissive: P.emissive ? 1 : 0, uMottle: n(P.colorVariation, 1), uDustLow: n(P.dustInLows),

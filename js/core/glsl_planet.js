@@ -145,13 +145,20 @@ float craterProfile(float d, float Dkm, float Dt, float fresh, float az, float r
   }
   return v;
 }
-// rayed/fresh-ejecta brightness around a crater (0..1): continuous blanket + radial streaks
+// Fresh-ejecta brightness around a crater (0..1): a soft bright halo plus thin ray streaks of
+// random length with clumps along them (secondary craters). Angle noise uses (cos, sin) so rays
+// are continuous all the way round.
 float ejectaBright(float d, float ang, float fresh, float seedf) {
-  if (d > 12.0) return 0.0;
-  float blanket = sstep(2.4, 1.0, d);
-  float streak = pow(max(0.0, snoise(vec3(ang * 5.0, seedf, d * 0.08))), 2.0) + 0.6 * pow(max(0.0, snoise(vec3(ang * 13.0, seedf + 9.0, d * 0.25))), 3.0);
-  float rays = streak * sstep(12.0, 1.5, d) * sstep(0.9, 1.3, d);
-  return fresh * max(blanket * 0.9, rays * 1.6);
+  if (d > 14.0 || fresh <= 0.0) return 0.0;
+  vec2 cs = vec2(cos(ang), sin(ang));
+  float halo = exp(-sq(max(d - 0.95, 0.0) / 0.45)) * (0.75 + 0.25 * sstep(1.0, 0.3, d));
+  float r1 = pow(sat(snoise(vec3(cs * 7.0, seedf))), 2.5);
+  float r2 = pow(sat(snoise(vec3(cs * 19.0, seedf + 3.7))), 3.0);
+  float r3 = pow(sat(snoise(vec3(cs * 41.0, seedf + 8.1))), 3.0);
+  float len = 5.0 + 8.0 * (0.5 + 0.5 * snoise(vec3(cs * 2.5, seedf + 1.3)));
+  float rays = (r1 + 0.8 * r2 + 0.6 * r3) * sstep(len, 1.3, d) * sstep(0.9, 1.6, d);
+  rays *= 0.55 + 0.45 * snoise(vec3(d * 1.3, cs * 9.0 + seedf));
+  return fresh * max(halo * 0.85, rays * 1.1);
 }
 `;
 })();

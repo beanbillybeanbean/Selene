@@ -27,7 +27,8 @@ uniform vec4 uF[MAXF]; uniform vec4 uFP[MAXF]; uniform int uFCount;
 uniform float uBaseFreq, uBaseWarp, uDicho, uHighH, uLowH, uTrans, uLowRough, uBaseAmp;
 uniform vec3 uDichoDir;
 uniform float uHillsAmp, uHillsScale, uErode, uMontesAmp, uMontesScale, uMontesCover;
-uniform float uLowCraters;
+uniform float uGrooveBright, uRiftBelt;
+uniform float uLowCraters, uBrightFrac, uLinNet, uLinScale, uLinWidth, uLaneAmp, uLaneScale, uLaneWidth, uLaneGrooves, uFracLow, uLaneCover;
 uniform float uCraterDens, uOldCraters, uCraterMax, uCraterFresh, uDt, uCraterSfd, uFloorDark, uEjecta, uCraterAmp;
 uniform float uCanyonAmp, uCanyonScale, uCanyonCover;
 uniform float uCrackAmp, uCrackScale, uCrackCover;
@@ -87,7 +88,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       float az = snoise(vec3(cos(ang) * 1.3, sin(ang) * 1.3, hh.x * 40.0 + float(o)));
       float d = dist / rr * (1.0 + 0.07 * az);
       h += amp * craterProfile(d, Dkm, uDt, fresh, az, hh.y);
-      m.r = max(m.r, uEjecta * ejectaBright(d, ang, sstep(0.9, 1.0, fresh), hh.x * 97.0) * sstep(4.0, 1.5, d));
+      m.r = max(m.r, uEjecta * ejectaBright(d, ang, sstep(1.0 - uBrightFrac, 1.0 - uBrightFrac * 0.3, hash13(cc, sd + 5u)), hh.x * 97.0) * sstep(2.9, 1.8, d));
       m.b = max(m.b, uFloorDark * (1.0 - fresh) * sstep(0.8, 0.35, d) * sstep(4.0, 20.0, Dkm));
     }
     f *= 2.0;
@@ -160,8 +161,17 @@ void listFeatures(vec3 p, int stage, inout float h, inout vec4 m) {
       float sculpt = depth * 0.08 * sstep(3.0, 1.2, d) * sstep(0.95, 1.2, d) * (0.5 + ridged(vec3(ang * 4.0, d * 3.0, float(i)), 3));
       h += bowl + rim + ring + sculpt;
     } else if (t == 2) {                      // giant shield volcano. B = (type, height, caldera, scarp)
-      if (stage != 0 || d > 1.6) continue;
+      if (stage != 0 || d > 4.5) continue;
       float ang = azimuth(p, c);
+      // lobate lava-flow fields radiating from the edifice (radar-bright/dark flows on Venus, dark on Mars)
+      vec2 cs = vec2(cos(ang), sin(ang));
+      float reach = 1.6 + 2.6 * (0.5 + 0.5 * snoise(vec3(cs * 2.2, float(i) * 3.1)));
+      float tongue = sstep(0.05, 0.35, snoise(vec3(cs * 7.0, d * 0.9 + float(i))) + 0.25 * snoise(p * fr(25.0))) * sstep(reach, reach * 0.8, d) * sstep(0.6, 1.0, d);
+      float kindF = step(0.0, snoise(vec3(cs * 4.0, d * 0.5 - float(i))));
+      m.g = max(m.g, tongue * (1.0 - kindF) * 0.7);
+      m.r = max(m.r, tongue * kindF * 0.25);
+      h += 60.0 * tongue;
+      if (d > 1.6) continue;
       float flows = ridged(vec3(ang * 18.0, d * 6.0, float(i)), 4);
       float cone = pow(sat(1.0 - d), 1.25) * (1.0 + 0.04 * flows);
       float scarp = B.w * sstep(1.02, 0.94, d);          // basal escarpment (Olympus Mons)
@@ -181,8 +191,8 @@ void listFeatures(vec3 p, int stage, inout float h, inout vec4 m) {
       if (stage != 1 || d > 1.4) continue;
       float ang = azimuth(p, c);
       float wig = 0.06 * snoise(vec3(cos(ang), sin(ang), float(i)) * 2.0);
-      float ringv = exp(-sq((d + wig - 0.85) / B.z)) + 0.35 * sstep(0.9, 0.2, d);
-      if (B.y < 0.5) m.b = max(m.b, B.w * ringv); else m.r = max(m.r, B.w * ringv);
+      if (B.y < 0.5) m.b = max(m.b, B.w * (exp(-sq((d + wig - 0.85) / B.z)) + 0.25 * sstep(0.9, 0.1, d + wig)));   // Pele-type red ring
+      else m.r = max(m.r, B.w * 0.6 * exp(-sq((d + wig) / 0.55)));                                                  // diffuse bright halo
     } else if (t == 6) {                      // corona (Venus). B = (type, height, fracture, 0)
       if (stage != 0 || d > 1.5) continue;
       float ang = azimuth(p, c);
@@ -206,6 +216,25 @@ void listFeatures(vec3 p, int stage, inout float h, inout vec4 m) {
   }
 }
 
+// lava-flood the floors of basins that carry a fill fraction (maria)
+void floodBasins(vec3 p, inout float h, inout vec4 m) {
+  for (int i = 0; i < MAXF; i++) {
+    if (i >= uFCount) break;
+    vec4 A = uF[i], B = uFP[i];
+    if (int(B.x + 0.5) != 1 || B.w <= 0.0) continue;
+    float d = gcDist(p, A.xyz) / A.w;
+    if (d > 1.15) continue;
+    float ref = mix(uLowH, uHighH, sstep(-uTrans, uTrans, provincesLo(A.xyz)));
+    float level = ref - B.y * (1.0 - B.w) * 0.85 + 150.0 * fbm(p * 4.0 + float(i), 2);
+    if (h < level) {
+      float k = sstep(0.0, 80.0, level - h) * sstep(1.02, 0.88, d + 0.04 * snoise(p * fr(150.0)));
+      float wr = pow(1.0 - abs(snoise(p * fr(70.0) + SO + float(i))), 10.0) * 150.0;
+      h = mix(h, level + wr, k);
+      m.g = max(m.g, k);
+    }
+  }
+}
+
 void main() {
   vec3 p = cellDir();
   SO = seedOff(uSeed);
@@ -217,6 +246,13 @@ void main() {
     float hi = sstep(-uTrans, uTrans, e + 0.05 * fbm(p * fr(80.0) + SO, 3));
     h = mix(uLowH, uHighH, hi) + uBaseAmp * fbm(p * 3.0 - SO, 4);
     // fretted / knobby terrain along the highland scarp
+    if (uRiftBelt > 0.0) {
+      float x = (e - uTrans * 1.2) / (uTrans * 0.6);
+      float belt = exp(-x * x);
+      float steps = floor(belt * 4.0) / 4.0 + sstep(0.6, 1.0, fract(belt * 4.0)) / 4.0;
+      h -= uRiftBelt * mix(belt, steps, 0.6) * (0.7 + 0.3 * fbm(p * fr(200.0) + SO, 3));
+      h += uRiftBelt * 0.25 * exp(-sq((e - uTrans * 2.4) / (uTrans * 0.5)));
+    }
     float scarp = sstep(uTrans * 2.5, 0.0, abs(e));
     if (scarp > 0.0) { Cell kb = cellular(p * fr(90.0) + SO, 17u); h += scarp * (uHighH - uLowH) * 0.25 * sstep(0.45, 0.2, kb.f1) * (hi < 0.5 ? 1.0 : -0.5); }
     float fH = fr(uHillsScale);
@@ -273,6 +309,7 @@ void main() {
     }
     craterField(p, uOldCraters, uCraterFresh * 3.0, uCraterAmp, 1000u, uLowCraters, h, m);
     listFeatures(p, 0, h, m);
+    floodBasins(p, h, m);
     // lava-flooded maria / smooth plains in lowlands and basins
     if (uMare > 0.0) {
       float level = uMareLevel + 300.0 * fbm(p * 2.0 + SO, 3);
@@ -289,6 +326,45 @@ void main() {
     h = at(uHin).r; m = at(uMin);
     craterField(p, uCraterDens, uCraterFresh, uCraterAmp, 2000u, mix(uLowCraters, 1.0, 0.5), h, m);
     listFeatures(p, 1, h, m);
+    // tectonic resurfacing can be confined to the lowland provinces (e.g. Enceladus' fractured plains)
+    float fracMask = mix(1.0, 1.0 - sstep(-uTrans, uTrans, provincesLo(p)), uFracLow);
+    // lineae network: isolines of several noise fields = long, curving, crossing ridges of different ages
+    if (uLinNet > 0.0) {
+      for (int k = 0; k < 5; k++) {
+        float f = fr(uLinScale) * pow(1.45, float(k));
+        // each family is stretched along its own direction, so its lines run long and nearly parallel
+        vec3 dirK = normalize(hash33(ivec3(k, 3, 7), uint(uSeed) + 11u) - 0.5);
+        vec3 q = p * f + SO * (1.3 * float(k + 1));
+        q -= dirK * dot(q, dirK) * 0.96;
+        vec3 g; float nv = snoiseGrad(q, g);
+        vec3 gt = g - p * dot(g, p);
+        float distKm = abs(nv) / max(length(gt), 0.05) / f * uR * 0.001;
+        float wk = uLinWidth * (0.6 + 0.8 * fract(float(k) * 0.618 + 0.3)) * (0.7 + 0.3 * snoise(q * 0.5));
+        float x = distKm / wk;
+        float seg = sstep(-0.15, 0.35, snoise(q * 0.3 + 7.0)) * fracMask;
+        float age = 1.0 - 0.12 * float(k);
+        h += uLinNet * seg * (exp(-sq((x - 0.9) / 0.5)) - 0.6 * exp(-sq(x / 0.35))) / (1.0 + 0.4 * float(k));
+        m.g = max(m.g, seg * age * (0.3 * exp(-sq(x / 3.0)) + 0.7 * exp(-sq(x / 0.9))));
+      }
+    }
+    // bright grooved lanes (sulci) between dark polygons, grooves running parallel to the lanes
+    if (uLaneAmp > 0.0) {
+      vec3 q = p * fr(uLaneScale) + 0.25 * warpVec(p * 2.0 + SO, 3);
+      Cell c = cellular(q, 555u);
+      float ed = cellEdge(c, q);
+      float wL = uLaneWidth * (0.35 + 1.1 * fract(c.id * 13.0 + c.id2 * 7.0));
+      float lane = sstep(wL, wL * 0.75, ed + 0.03 * snoise(q * 4.0)) * step(1.0 - uLaneCover, fract(c.id * 5.3 + c.id2 * 5.3));
+      vec3 q2 = q * 2.1 + 11.0;
+      Cell c2 = cellular(q2, 556u);
+      float ed2 = cellEdge(c2, q2);
+      float lane2 = sstep(wL * 0.7, wL * 0.45, ed2 + 0.03 * snoise(q2 * 4.0)) * step(1.0 - uLaneCover * 0.5, fract(c2.id * 9.1 + c2.id2 * 3.3));
+      float L = max(lane, 0.85 * lane2);
+      float gph = (lane >= lane2 ? ed : ed2) * uLaneGrooves + 0.5 * snoise(q * 6.0);
+      float gro = pow(abs(sin(gph * PI)), 0.8);
+      h += uLaneAmp * L * (0.6 * gro - 0.5);
+      float laneTone = 0.65 + 0.35 * fract((lane >= lane2 ? c.id + c.id2 : c2.id * 3.0 + c2.id2) * 17.3);
+      m.b = max(m.b, L * laneTone * (0.8 + 0.2 * gro) * (0.9 + 0.1 * snoise(q * 12.0)));
+    }
     // fracture networks: polygonal troughs at several scales
     if (uCrackAmp > 0.0) {
       float f = fr(uCrackScale);
@@ -296,7 +372,7 @@ void main() {
         vec3 q = p * f + 0.35 * warpVec(p * f * 0.25 + SO, 2);
         Cell c = cellular(q, 400u + uint(o));
         float ed = cellEdge(c, q);
-        float mask = sstep(1.0 - uCrackCover, 1.0 - uCrackCover + 0.2, 0.5 + 0.7 * fbm(p * 3.0 + SO * float(o + 1), 3));
+        float mask = fracMask * sstep(1.0 - uCrackCover, 1.0 - uCrackCover + 0.2, 0.5 + 0.7 * fbm(p * 3.0 + SO * float(o + 1), 3));
         float w = 0.03 + 0.03 * fract(c.id * 11.0 + c.id2 * 7.0);
         float tr = sstep(w * 1.5, 0.0, ed);
         h -= uCrackAmp * mask * tr / (1.0 + float(o));
@@ -309,7 +385,7 @@ void main() {
     if (uGrooveAmp > 0.0) {
       vec3 q = p * fr(uGroovePatch) + 0.3 * warpVec(p * 3.0 + SO, 3);
       Cell c = cellular(q, 777u);
-      float mask = sstep(1.0 - uGrooveCover, 1.0 - uGrooveCover + 0.05, fract(c.id * 3.7));
+      float mask = fracMask * sstep(1.0 - uGrooveCover, 1.0 - uGrooveCover + 0.05, fract(c.id * 3.7));
       if (mask > 0.0) {
         vec3 dir = normalize(hash33(ivec3(floor(c.c1 * 3.0)), 9u) - 0.5);
         float fg = fr(uGrooveScale);
@@ -317,7 +393,7 @@ void main() {
         float gr = pow(abs(sin(ph)), 0.6) * (0.7 + 0.3 * sin(ph * 2.7 + 1.0));
         float edge = sstep(0.0, 0.08, cellEdge(c, q));
         h += uGrooveAmp * mask * edge * (gr - 0.5) * (0.6 + 0.4 * fract(c.id * 17.0));
-        m.r = max(m.r, mask * edge * 0.35 * fract(c.id * 5.1));
+        m.r = max(m.r, mask * edge * uGrooveBright * fract(c.id * 5.1));
       }
     }
     // chaos terrain: disrupted crust, tilted rafts in a hummocky dark matrix
@@ -351,15 +427,16 @@ void main() {
         Cell c = cellular(q, 900u + uint(o));
         if (c.id < uPateraDens) {
           vec3 u = normalize(q - c.c1);
-          float lob = 1.0 + 0.25 * snoise(u * 2.2 + c.id * 50.0) + 0.1 * snoise(u * 6.0 + c.id * 30.0);
-          float rr = (0.12 + 0.2 * fract(c.id * 31.0)) * lob;
+          float lob = 1.0 + 0.22 * snoise(u * 1.6 + c.id * 50.0) + 0.05 * snoise(u * 4.0 + c.id * 30.0);
+          float rr = (0.05 + 0.2 * pow(fract(c.id * 31.0), 2.0)) * lob;
           float inside = sstep(rr, rr * 0.9, c.f1);
           h -= uPateraAmp * inside * (0.5 + fract(c.id * 7.0));
           float kind = fract(c.id * 91.0);
           m.g = max(m.g, inside * (0.6 + 0.4 * kind));
           m.a = max(m.a, inside * sstep(0.7, 0.95, kind) * (0.5 + 0.5 * snoise(q * 8.0)));
-          float halo = sstep(rr * 3.0, rr, c.f1) * (1.0 - inside);
-          if (kind < 0.3) m.b = max(m.b, halo * 0.7); else if (kind < 0.6) m.r = max(m.r, halo * 0.6);
+          float halo = sstep(rr * 2.6, rr, c.f1 + 0.05 * snoise(q * 5.0)) * (1.0 - inside);
+          float hk = fract(c.id * 57.0);
+          if (hk < 0.1) m.b = max(m.b, halo * 0.4); else if (hk < 0.18) m.r = max(m.r, halo * 0.3);
         }
         f *= 2.2;
       }
@@ -430,7 +507,7 @@ void main() {
     const km = (x) => x * 1000 / R;
     for (let i = 0; i < (P.basins | 0); i++) {
       const rad = km(P.craterMax * (0.6 + 1.4 * r())) ;
-      out.push({ A: [...S.randDir(r), rad], B: [F.BASIN, P.basinDepth * (0.6 + 0.5 * r()), r() < 0.6 ? 1 : 0, 0] });
+      out.push({ A: [...S.randDir(r), rad], B: [F.BASIN, P.basinDepth * (0.6 + 0.5 * r()), r() < 0.6 ? 1 : 0, r() < (P.basinFlood ?? 0) ? 0.45 + 0.4 * r() : 0] });
     }
     for (let i = 0; i < (P.rises | 0); i++) out.push({ A: [...S.randDir(r), km(P.riseSize * (0.7 + 0.5 * r()))], B: [F.DOME, P.riseHeight * (0.6 + 0.4 * r()), 0, 0] });
     for (let i = 0; i < (P.giantVolcanoes | 0); i++) {
@@ -442,13 +519,13 @@ void main() {
       const D = P.rayedSize * (0.25 + 0.75 * r() * r());
       out.push({ A: [...S.randDir(r), km(D / 2)], B: [F.RAYED, D, (0.6 + 0.4 * r()) * (P.rayBrightness ?? 1), r() * 100] });
     }
-    for (let i = 0; i < (P.lineae | 0); i++) out.push(arcFeature(r, F.LINEA, 0.3 + 1.2 * r(), km(3 + 7 * r()), (r() - 0.5) * 0.4));
+    for (let i = 0; i < (P.lineae | 0); i++) out.push(arcFeature(r, F.LINEA, 0.2 + 0.6 * r(), km(3 + 6 * r()), (r() - 0.5) * 0.08));
     for (let i = 0; i < (P.canyons | 0); i++) out.push(arcFeature(r, F.CANYON, km(P.canyonLength * (0.4 + 0.6 * r())) / 2, km(40 + 60 * r()), (r() - 0.5) * 0.1));
     if (P.tigerStripes) {
       const c = [0, -0.98, 0.2]; const cn = S.vnorm(c);
       for (let k = 0; k < 4; k++) { const off = S.vnorm([cn[0] + (k - 1.5) * 0.06, cn[1], cn[2] + (k - 1.5) * 0.05]); out.push({ A: [...off, km(70)], B: [F.STRIPE, 0.6, km(2.5), 0] }); }
     }
-    for (let i = 0; i < (P.plumes | 0); i++) out.push({ A: [...S.randDir(r), km(300 + 500 * r())], B: [F.PLUME, r() < 0.4 ? 0 : 1, 0.1 + 0.08 * r(), 0.5 + 0.5 * r()] });
+    for (let i = 0; i < (P.plumes | 0); i++) out.push({ A: [...S.randDir(r), km(250 + 450 * r())], B: [F.PLUME, i < (P.redPlumes ?? 1) ? 0 : 1, 0.05 + 0.04 * r(), 0.5 + 0.5 * r()] });
     for (let i = 0; i < (P.bigPaterae | 0); i++) out.push({ A: [...S.randDir(r), km(60 + 90 * r())], B: [F.PATERA, 800 + 800 * r(), r() < 0.5 ? 0.9 : 0.3, 0] });
     return out.slice(0, MAXF);
   }
@@ -466,11 +543,12 @@ void main() {
       uHillsAmp: n(P.roughness, 600), uHillsScale: n(P.hillScale, 250), uErode: n(P.erodedLook, 1.0),
       uMontesAmp: n(P.mountainHeight), uMontesScale: n(P.mountainScale, 180), uMontesCover: n(P.mountainCover, 0.3),
       uCraterDens: P.craters ? n(P.craterDensity) : 0, uOldCraters: P.craters ? n(P.oldCraters) : 0, uCraterMax: n(P.craterMax, 150) * 500 / ctx.R,
-      uCraterFresh: n(P.craterFreshness, 1.0), uLowCraters: n(P.lowlandCraters, 1), uDt: n(P.transitionDiameter, 15), uCraterSfd: n(P.craterSfd, 1.0), uFloorDark: n(P.floorDark),
+      uCraterFresh: n(P.craterFreshness, 1.0), uLowCraters: n(P.lowlandCraters, 1), uBrightFrac: n(P.brightCraters, 0.02),
+      uLinNet: n(P.lineaeNet), uLinScale: n(P.lineaeScale, 400), uLinWidth: n(P.lineaeWidth, 4), uLaneAmp: n(P.lanes), uLaneScale: n(P.laneScale, 900), uLaneWidth: n(P.laneWidth, 0.12), uLaneGrooves: n(P.laneGrooves, 40), uLaneCover: n(P.laneCover, 0.7), uFracLow: n(P.fracturesInLowlands), uDt: n(P.transitionDiameter, 15), uCraterSfd: n(P.craterSfd, 1.0), uFloorDark: n(P.floorDark),
       uEjecta: n(P.ejectaBright, 1), uCraterAmp: n(P.craterDepth, 1),
       uCanyonAmp: n(P.canyonNet), uCanyonScale: n(P.canyonScale, 900), uCanyonCover: n(P.canyonCover, 0.2),
       uCrackAmp: n(P.cracks), uCrackScale: n(P.crackScale, 300), uCrackCover: n(P.crackCover, 0.5),
-      uGrooveAmp: n(P.grooves), uGrooveScale: n(P.grooveSpacing, 8), uGrooveCover: n(P.grooveCover, 0.5), uGroovePatch: n(P.groovePatch, 400),
+      uGrooveAmp: n(P.grooves), uGrooveScale: n(P.grooveSpacing, 8), uGrooveCover: n(P.grooveCover, 0.5), uGroovePatch: n(P.groovePatch, 400), uGrooveBright: n(P.grooveBright, 0.35), uRiftBelt: n(P.riftBelt),
       uChaosAmp: n(P.chaos), uChaosCover: n(P.chaosCover, 0.15), uChaosScale: n(P.chaosBlock, 30),
       uTessAmp: n(P.tesserae), uTessCover: n(P.tesseraeCover, 0.15), uWrinkle: n(P.wrinkleRidges), uShieldDens: n(P.shieldFields), uShieldAmp: n(P.shieldHeight, 800),
       uPateraDens: n(P.paterae) / 200, uPateraAmp: n(P.pateraDepth, 800), uMtnAmp: n(P.blockMountains), uMtnCover: n(P.blockCover, 0.08),
