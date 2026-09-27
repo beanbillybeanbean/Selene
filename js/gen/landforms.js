@@ -369,17 +369,22 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
     }
 ` },
     flows: { on: (U) => U.uFlowUnits > 0, code: String.raw`
-    { float lowMask = 1.0 - 0.8 * sstep(-uTrans, uTrans, provAt(p));   // lobate lava-flow sheets
+    { float lowMask = 1.0 - 0.8 * sstep(-uTrans, uTrans, provAt(p));   // lava-flow fields on the plains
+      // each flow is one lobate sheet with a single tone, fronts ragged; later layers overlap earlier ones
       for (int k = 0; k < L(3); k++) {
-        vec3 q = p * fr(uFlowScale / (1.0 + float(k))) + SO * float(k + 3);
-        q += 0.6 * warpVec(q * 0.5, 3);
-        float nF = fbm(q, min(5, octaves(fr(uFlowScale / (1.0 + float(k))), uTex)), 2.2, 0.55);
-        float th = 0.55 - uFlowUnits * 0.9;
-        float unit = sstep(th, th + 0.015, nF) * lowMask;
+        float fS = fr(uFlowScale / (1.0 + 0.8 * float(k)));
+        vec3 q = p * fS + SO * float(k + 3);
+        q += 0.55 * warpVec(q * 0.45, 3);
+        Cell c = cellular(q, 610u + uint(k));
+        if (c.id > uFlowUnits) continue;
+        float front = c.f1 + 0.22 * fbm(q * 2.2, 3) + 0.06 * uJag * jag(p, fS * 10.0, uTex);
+        float rr = 0.45 + 0.3 * fract(c.id * 17.0);
+        float unit = sstep(rr + uTex * fS, rr - uTex * fS, front) * lowMask;
         if (unit <= 0.0) continue;
-        h += 45.0 * unit / (1.0 + float(k));
-        float tone = fract(float(k) * 0.37 + 0.2 * fbm(q * 0.2, 2));
-        if (tone < 0.5) m.g = max(m.g, unit * (0.35 + 0.3 * tone)); else m.r = max(m.r, unit * 0.18);
+        h += 45.0 * unit / (1.0 + 0.5 * float(k));
+        float tone = fract(c.id * 37.0 + float(k) * 0.31);
+        float tint = 0.12 + 0.35 * fract(c.id * 53.0);
+        if (tone < 0.55) m.g = mix(m.g, tint, unit); else m.r = mix(m.r, tint * 0.5, unit);
       } }
 ` },
     cracks: { on: (U) => U.uCrackAmp > 0, code: String.raw`

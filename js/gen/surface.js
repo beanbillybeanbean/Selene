@@ -32,6 +32,7 @@ uniform float uSlopeK, uCurvK, uDarkK, uSecondK, uBrightK, uIceK, uEmissive, uMo
 layout(location = 0) out vec4 o;
 layout(location = 1) out vec4 oE;
 
+vec3 sq3(vec3 v) { return v * v; }
 vec3 blackbody(float t) { // 0..1 -> dull red to yellow-white
   return mix(mix(vec3(0.35, 0.02, 0.0), vec3(1.0, 0.25, 0.02), sstep(0.0, 0.5, t)), vec3(1.0, 0.85, 0.45), sstep(0.5, 1.0, t));
 }
@@ -118,9 +119,14 @@ void main() {
     c = mix(c, uC[6], sstep(0.12, 0.5, slope) * uSlopeK);
     c *= 1.0 + uCurvK * curv;
     // material layers
-    c = mix(c, uC[7], frayed(m.g * uDarkK, jB, uFray));
-    c = mix(c, uC[8], frayed(m.b * uSecondK, jA, uFray));
-    c = mix(c, uC[9], frayed(m.r * uBrightK, jC, uFray));
+    // fray only where a material actually changes (its gradient), so uniform tones stay clean
+    vec4 mE = nb(uMat, ivec2(1, 0)), mW = nb(uMat, ivec2(-1, 0)), mN = nb(uMat, ivec2(0, 1)), mS = nb(uMat, ivec2(0, -1));
+    float dkm = 2.0 * texelAngle(uN) * uR * 0.001;
+    vec3 grd = sqrt(sq3(mE.gbr - mW.gbr) + sq3(mN.gbr - mS.gbr)) / dkm;
+    vec3 fe = uFray * sat3(grd * 25.0);
+    c = mix(c, uC[7], frayed(m.g * uDarkK, jB, fe.x));
+    c = mix(c, uC[8], frayed(m.b * uSecondK, jA, fe.y));
+    c = mix(c, uC[9], frayed(m.r * uBrightK, jC, fe.z));
     // geological units: each unit has its own slight tone, with the same ragged contacts as the relief
     if (uUnitTone > 0.0) {
       vec3 tu = terrainUnits(p, seedOff(uLSeed), uR, uTex, uUnitScale);

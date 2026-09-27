@@ -89,9 +89,11 @@
   function scheduleRebuild() { clearTimeout(rebuildT); rebuildT = setTimeout(buildPanel, 400); }
 
   function setPreset(id) {
-    const keepSeed = P ? P.seed : 'selene', keepRes = P ? P.resolution : 512;
+    const keepSeed = P ? P.seed : 'selene', keepRes = P ? P.resolution : 512, keepNodes = P ? P.nodes : null;
     P = S.preset(id);
     P.seed = keepSeed; P.resolution = keepRes;
+    P.nodes = keepNodes || S.Nodes.defaultGraph();         // the node graph survives switching world type
+    if (editor) editor.render();
     $('seed').value = P.seed;
     $('res').value = P.resolution;
     buildPanel();
@@ -115,10 +117,42 @@
       $('empty').hidden = true;
       progress(`Done in ${w.seconds.toFixed(1)} s`, 1);
       const R = w.R / 1000;
-      $('stats').innerHTML = `${S.PRESETS[P.preset] ? S.PRESETS[P.preset].name : ''} · seed “${P.seed}”<br>relief ${(w.ctx.hmin / 1000).toFixed(1)} … ${(w.ctx.hmax / 1000).toFixed(1)} km on a ${R.toFixed(0)} km world<br>${w.N}² × 6 cube faces · GPU memory ${gpu.memoryMB().toFixed(0)} MB`;
+      updateStats();
       fillWidths();
     } catch (e) { showError(e); progress('Failed — see error', 0); }
     busy = false; $('gen').disabled = false; $('exGo').disabled = false; preview.busy = false; preview.dirty = true;
+  }
+
+  function updateStats() {
+    const w = world; if (!w) return;
+    const nodesOn = w.H !== w.baseH ? ' · node graph applied' : '';
+    $('stats').innerHTML = `${S.PRESETS[P.preset] ? S.PRESETS[P.preset].name : ''} · seed “${P.seed}”${nodesOn}<br>relief ${(w.ctx.hmin / 1000).toFixed(1)} … ${(w.ctx.hmax / 1000).toFixed(1)} km on a ${(w.R / 1000).toFixed(0)} km world<br>${w.N}² × 6 cube faces · GPU memory ${gpu.memoryMB().toFixed(0)} MB`;
+  }
+
+  // ------------------------------------------------------------------ node editor
+  let editor = null, nodeT = 0;
+  function nodesChanged() {
+    clearTimeout(nodeT);
+    nodeT = setTimeout(async () => {
+      if (!world || busy) return;
+      preview.busy = true;                       // don't interleave preview frames with the node pass
+      try {
+        world.P.nodes = JSON.parse(JSON.stringify(P.nodes));
+        await S.Nodes.apply(world, P.nodes);
+        updateStats();
+      } catch (e) { showError(e); }
+      preview.busy = false; preview.dirty = true;
+    }, 180);
+  }
+  function toggleNodes(open) {
+    const panel = $('nodePanel');
+    open = open ?? panel.hidden;
+    panel.hidden = !open;
+    document.getElementById('stage').classList.toggle('nodes-open', open);
+    $('nodesBtn').classList.toggle('on', open);
+    if (open && !editor) editor = new S.NodeEditor($('npBody'), () => P.nodes, nodesChanged);
+    if (open) { editor.render(); setTimeout(() => editor.fit(), 30); }
+    preview.dirty = true;
   }
 
   function fillWidths() {
@@ -224,6 +258,17 @@
       document.querySelectorAll('#viewMode button').forEach((x) => x.classList.toggle('on', x === b));
       preview.view = +b.dataset.v; preview.dirty = true;
     });
+    $('nodesBtn').onclick = () => toggleNodes();
+    { // resizable node panel
+      const h = $('npResize');
+      h.addEventListener('pointerdown', (e) => {
+        h.setPointerCapture(e.pointerId);
+        const stage = document.getElementById('stage'), r = stage.getBoundingClientRect();
+        const mv = (ev) => { const f = Math.min(0.85, Math.max(0.2, (r.bottom - ev.clientY) / r.height)); stage.style.setProperty('--np-h', (f * 100).toFixed(1) + '%'); preview.dirty = true; if (editor) editor.drawWires(); };
+        const up = () => { h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); };
+        h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up);
+      });
+    }
     $('layer').onchange = () => { preview.layer = +$('layer').value; preview.dirty = true; };
     $('exag').oninput = () => { preview.exag = +$('exag').value; preview.dirty = true; };
     $('sun').oninput = () => { preview.sunAz = +$('sun').value; preview.dirty = true; };
@@ -235,6 +280,8 @@
         const q = JSON.parse(await f.text());
         const base = S.preset(q.preset && S.PRESETS[q.preset] ? q.preset : 'mars');
         P = { ...base, ...q, colors: { ...base.colors, ...(q.colors || {}) } };
+        if (!P.nodes) P.nodes = S.Nodes.defaultGraph();
+        if (editor) { editor.render(); editor.fit(); }
         $('preset').value = P.preset; $('seed').value = P.seed; $('res').value = P.resolution;
         buildPanel();
       } catch (err) { showError(err); }

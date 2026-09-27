@@ -236,24 +236,24 @@
 
   const PRESETS = {
     mars: { name: 'Mars-like', desc: 'Cratered southern highlands, smooth northern plains, Tharsis-style giant volcanoes, a Valles-style canyon, ancient valley networks, dust and dark sand, polar layered caps.', p: {
-      microRelief: 110, unitScale: 250,
+      microRelief: 190, unitScale: 170, unitTone: 1.4, reliefColor: 1.0, rubble: 45, cracks: 60, crackScale: 260, crackCover: 0.22, scarps: 260, scarpScale: 140, scarpLevels: 2, scarpLip: 0.25,
       geoRadius: 3390, landFraction: 0.6, continentScale: 0.8, continentWarp: 0.6, dichotomy: 0.7, highlandHeight: 1800, lowlandHeight: -3800, provinceSharpness: 0.12, lowlandRoughness: 0.25,
       undulation: 1400, roughness: 900, hillScale: 300, erodedLook: 1.6, mountainHeight: 1200, mountainScale: 140, mountainCover: 0.15,
-      craters: true, craterDensity: 0.12, oldCraters: 0.75, lowlandCraters: 0.2, craterPatchiness: 0.6, craterMax: 260, craterFreshness: 1.3, transitionDiameter: 7, floorDark: 0.7, ejectaBright: 0.25,
+      craters: true, craterDensity: 0.2, oldCraters: 0.75, lowlandCraters: 0.2, craterPatchiness: 0.6, craterMax: 260, craterFreshness: 1.3, transitionDiameter: 7, floorDark: 0.7, ejectaBright: 0.25,
       basins: 2, basinDepth: 6500, rises: 1, riseSize: 2600, riseHeight: 5500, giantVolcanoes: 4, volcanoHeight: 21000, volcanoScarp: 0.35,
       canyons: 1, canyonLength: 3800, erosion: true, erosionIterations: 140, erosionStrength: 0.9, flowExponent: 3, hillslope: 0.01, talus: 1.2, uplift: 0, dunes: 25,
       iceCaps: true, capSize: 7, capHeight: 2500, terraces: 0.15,
       heightColor: 0.35, regional: 0.75, regionalScale: 2.2, regionalTopo: 0.5, regional2: 0.55, cliffColor: 0.25, curvatureColor: 0.08,
       colors: { low: '#9a6644', high: '#a57252', alt: '#c69a6c', alt2: '#5c4436', polar: '#b59a82', hemi: '#a57252', cliff: '#7b5541', dark: '#4d3b30', second: '#3f3129', bright: '#d4b28c', ice: '#f1ece6', lava: '#301008' } } },
     venus: { name: 'Venus-like', desc: 'Volcanic plains with wrinkle ridges, tessera highlands, coronae, shield fields, rift chasmata, large volcanoes and a thin scatter of pristine craters.', p: {
-      microRelief: 60, unitScale: 350,
+      microRelief: 80, unitScale: 450, unitTone: 2.2, reliefColor: 1.0, colorFray: 1.0, cracks: 90, crackScale: 160, crackCover: 0.4, lineaeNet: 90, lineaeScale: 600, lineaeWidth: 4,
       geoRadius: 6052, landFraction: 0.22, highlandHeight: 2200, lowlandHeight: -600, provinceSharpness: 0.1, lowlandRoughness: 0.5, undulation: 900, roughness: 350, hillScale: 200, erodedLook: 0.6,
       tesserae: 1800, tesseraeCover: 0.13, coronae: 18, shieldFields: 0.35, shieldHeight: 500, wrinkleRidges: 160, rises: 3, riseSize: 2200, riseHeight: 3000,
       giantVolcanoes: 5, volcanoHeight: 8000, volcanoScarp: 0, volcanoWidth: 1.3, canyons: 3, canyonLength: 3200,
       craters: true, craterDensity: 0.025, craterMax: 270, transitionDiameter: 3, floorDark: 0.9, ejectaBright: 0.5,
-      scarps: 250, scarpScale: 900, scarpLevels: 2, scarpLip: 0.15, rubble: 40, flowUnits: 0.45, flowScale: 700,
-      heightColor: 0.5, regional: 0.5, regional2: 0.5, cliffColor: 0.25, curvatureColor: 0.08,
-      colors: { low: '#7b5a3c', high: '#8f6d4a', alt: '#9c7c54', alt2: '#5a432f', polar: '#8f6d4a', hemi: '#8f6d4a', cliff: '#a88a66', dark: '#4a3626', second: '#b39570', bright: '#c7a67c', ice: '#ffffff', lava: '#300c04' } } },
+      scarps: 250, scarpScale: 900, scarpLevels: 2, scarpLip: 0.15, rubble: 12, flowUnits: 0.3, flowScale: 1100,
+      heightColor: 0.6, regional: 0.7, regionalScale: 1.8, regional2: 0.6, cliffColor: 0.3, curvatureColor: 0.1, darkMaterial: 1.2, brightMaterial: 1.6,
+      colors: { low: '#6a4b31', high: '#9a7650', alt: '#9c7c54', alt2: '#5a432f', polar: '#8f6d4a', hemi: '#8f6d4a', cliff: '#a88a66', dark: '#4a3626', second: '#b39570', bright: '#c7a67c', ice: '#ffffff', lava: '#300c04' } } },
     moon: { name: 'Moon-like', desc: 'Saturated cratered highlands, multi-ring basins flooded by dark maria, bright rayed young craters.', p: {
       microRelief: 90, unitScale: 300,
       geoRadius: 1737, landFraction: 0.75, dichotomy: 0.12, highlandHeight: 1500, lowlandHeight: -2200, lowlandRoughness: 0.5, undulation: 1500, roughness: 1100, hillScale: 400, erodedLook: 0.3,

@@ -29,6 +29,37 @@ Everything runs on your GPU in the browser. There is nothing to install.
 
 \*On a mid-range desktop GPU. Worlds with erosion (Mars, Earth) take longer.
 
+### Node editor (remix and recolour)
+Press **◈ Nodes** in the bar under the globe. A Blender-style panel opens under the preview.
+Changes re-apply in about a second, without regenerating the planet.
+
+- **World** is the planet you generated, and **Output** is what gets previewed and exported.
+  At first, World is wired straight into Output.
+- Add nodes with the buttons along the top of the panel:
+
+  | Node | What it does |
+  |---|---|
+  | Terrain | Adds hills, mountains, rubble, mesas or dunes |
+  | Craters | Adds a crater population with real crater shapes and bright rays |
+  | Fractures | Adds polygon cracks, long ridges, bright grooved lanes, canyons or groove fields |
+  | Plateaus | Adds stepped mesas with ragged cliffs |
+  | Volcanoes | Adds shield volcanoes with calderas and lava flows |
+  | Mask | Picks out a height band, latitude, random patches or a hemisphere |
+  | Math | Adds, multiplies, mixes or combines two values |
+  | Paint | Paints a colour where its mask is |
+
+- **Chaining height:** each feature node takes a Height and gives back Height + its feature.
+  Chain them like World → Craters → Fractures → Output.
+- **Using masks:** feature nodes also output masks, such as Bright ejecta, Lines, Cliffs or Lava flows.
+  Wire a mask into a **Paint** node to colour exactly those places.
+  Wire it into another node's **Where** input to limit that node to those places.
+- **Connecting:** drag from an output ● to an input ●. Drag a plugged-in input ● away to unplug it.
+- **Moving around:** drag empty space to pan, and use the mouse wheel to zoom.
+- **Removing:** × (or Delete) removes the selected node.
+- **Examples** loads ready-made graphs, and **Tidy** re-arranges the boxes.
+- The graph is kept when you switch world type, saved with **Save settings**, and
+  applied to exports.
+
 ### If something goes wrong
 - **The first generation of each world type is slower.** Its shaders are compiled then, and on
   Windows that can take a little while. The progress bar shows *compiling shaders* during this step.

@@ -7,7 +7,12 @@
 
   class World {
     constructor(ctx, f) { Object.assign(this, f); this.ctx = ctx; this.P = ctx.P; this.N = ctx.N; this.R = ctx.R; }
-    dispose() { for (const k of ['H', 'T', 'A', 'M', 'clim', 'albedo', 'emission']) if (this[k]) this.ctx.gpu.free(this[k]); }
+    // back to the generated fields (node graph disabled / identity)
+    useBase() { this.H = this.baseH; this.albedo = this.baseAlbedo; this.ctx.hmin = this.baseHmin; this.ctx.hmax = this.baseHmax; }
+    dispose() {
+      this.disposed = true;
+      for (const k of ['H', 'T', 'A', 'M', 'clim', 'albedo', 'emission', 'baseH', 'baseAlbedo', 'nodeH', 'nodeC']) if (this[k]) this.ctx.gpu.free(this[k]);
+    }
   }
 
   async function generate(gpu, P, report = () => {}) {
@@ -39,7 +44,8 @@
     const { albedo, emission } = await S.Surface.run(ctx, { H, clim, A, M }, report);
     await gpu.sync();
     report('Done', 1);
-    const w = new World(ctx, { H, T, A, M, clim, albedo, emission });
+    const w = new World(ctx, { H, T, A, M, clim, albedo, emission, baseH: H, baseAlbedo: albedo, baseHmin: ctx.hmin, baseHmax: ctx.hmax });
+    if (P.nodes && S.Nodes) { report('Applying node graph', 0.99); await S.Nodes.apply(w, P.nodes); }
     w.seconds = (performance.now() - t0) / 1000;
     return w;
   }

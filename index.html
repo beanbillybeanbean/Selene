@@ -35,8 +35,10 @@
       <label>Relief ×<input id="exag" type="range" min="0" max="40" step="0.5" value="6"></label>
       <label>Sun<input id="sun" type="range" min="-3.14" max="3.14" step="0.01" value="-1.75"></label>
       <label><input id="spin" type="checkbox" checked> Rotate</label>
+      <button id="nodesBtn" title="Open the node editor to remix and recolour the planet">◈ Nodes</button>
     </div>
     <div id="stats"></div>
+    <div id="nodePanel" hidden><div id="npResize" title="Drag to resize"></div><div id="npBody"></div></div>
     <div id="empty">Choose a world type and press <b>Generate</b>.<br><small>Drag to rotate · scroll to zoom · Map view shows exactly what gets exported.</small></div>
   </section>
   <aside id="export">
@@ -78,10 +80,12 @@
 <script src="js/gen/erosion.js"></script>
 <script src="js/gen/climate.js"></script>
 <script src="js/gen/surface.js"></script>
+<script src="js/nodes/nodes.js"></script>
 <script src="js/gen/pipeline.js"></script>
 <script src="js/export/export.js"></script>
 <script src="js/export/integrations.js"></script>
 <script src="js/ui/preview.js"></script>
+<script src="js/ui/nodeeditor.js"></script>
 <script src="js/ui/ui.js"></script>
 </body>
 </html>
