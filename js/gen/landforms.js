@@ -43,6 +43,8 @@ uniform float uPateraDens, uPateraAmp, uMtnAmp, uMtnCover;
 uniform float uDunes, uTerrace, uMare, uMareLevel, uLavaLevel, uLavaCracks;
 uniform float uCapH, uCapLat;
 uniform float uScarpAmp, uScarpScale, uScarpLip, uRubble;
+uniform float uSecondYoung;
+uniform float uMicro, uUnitScale, uJag, uFurrow, uPalimp, uPateraFlows;
 layout(location = 0) out vec4 oH;
 layout(location = 1) out vec4 oM;
 
@@ -78,7 +80,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       vec3 dv = p - cd;
       if (dot(dv, dv) > sq(rr * 3.2)) continue;
       if (lowK < 1.0 && hh.x > dO * mix(lowK, 1.0, sstep(-uTrans, uTrans, provAt(cd)))) continue;       // sparser on young lowland plains
-      if (young && uMariaCraters < 1.0 && hh.x > dO * mix(1.0, uMariaCraters, sampleDir(uMin, cd).g)) continue; // young maria: fewer craters
+      if (young && uMariaCraters < 1.0) { vec4 mc = sampleDir(uMin, cd); if (hh.x > dO * mix(1.0, uMariaCraters, max(mc.g, mc.b * uSecondYoung))) continue; } // young maria: fewer craters
       if (uPatchy > 0.0 && hh.x > dO * mix(1.0 - uPatchy, 1.0, sstep(-0.25, 0.25, fbm(cd * 3.0 + SO * 0.3, 3)))) continue; // regional ages
       float dist = gcDist(p, cd);
       float Dkm = 2.0 * rr * uR * 0.001;
@@ -89,6 +91,8 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       h += amp * craterProfile(d, Dkm, uDt, fresh, az, hh.y);
       m.r = max(m.r, uEjecta * ejectaBright(d, ang, sstep(1.0 - uBrightFrac, 1.0 - uBrightFrac * 0.3, hash13(cc, sd + 5u)), hh.x * 97.0) * sstep(2.9, 1.8, d));
       m.b = max(m.b, uFloorDark * (1.0 - fresh) * sstep(0.8, 0.35, d) * sstep(4.0, 20.0, Dkm));
+      // palimpsests: big old craters on ice relax into bright, flat, ragged discs
+      if (uPalimp > 0.0 && fresh < 0.35 && Dkm > 25.0) m.r = max(m.r, uPalimp * sstep(0.35, 0.0, fresh) * sstep(1.25, 0.8, d + 0.15 * jag(p, fr(Dkm * 0.3), uTex)));
     }
     f *= 2.0;
   }
@@ -294,7 +298,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       } else if (t == 5) {                      // plume deposit (Io). B = (type, kind, width, strength)
         if (d > 1.4) continue;
         float ang = azimuth(p, c);
-        float wig = 0.06 * snoise(vec3(cos(ang), sin(ang), float(i)) * 2.0);
+        float wig = 0.06 * snoise(vec3(cos(ang), sin(ang), float(i)) * 2.0) + uJag * 0.05 * jag(p, fr(r * uR * 0.0004), uTex);
         if (B.y < 0.5) m.b = max(m.b, B.w * (exp(-sq((d + wig - 0.85) / B.z)) + 0.25 * sstep(0.9, 0.1, d + wig)));
         else m.r = max(m.r, B.w * 0.6 * exp(-sq((d + wig) / 0.55)));
       } else {                                  // large patera (Io). B = (type, depth, lava lake, 0)
@@ -329,20 +333,40 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
 ` },
     lanes: { on: (U) => U.uLaneAmp > 0, code: String.raw`
     { vec3 q = p * fr(uLaneScale) + 0.25 * warpVec(p * 2.0 + SO, 3);   // bright grooved lanes (sulci)
+      float tq = uTex * fr(uLaneScale);                                  // one texel in q units
+      float jn = uJag * (0.05 * jag(p, fr(uLaneScale * 0.06), uTex) + 0.03 * snoise(q * 3.0));
       Cell c = cellular(q, 555u);
-      float ed = cellEdge(c, q);
-      float wL = uLaneWidth * (0.35 + 1.1 * fract(c.id * 13.0 + c.id2 * 7.0));
-      float lane = sstep(wL, wL * 0.75, ed + 0.03 * snoise(q * 4.0)) * step(1.0 - uLaneCover, fract(c.id * 5.3 + c.id2 * 5.3));
+      float ed = cellEdge(c, q) + jn;
+      float along = 0.6 + 0.8 * (0.5 + 0.5 * fbm(q * 1.7 + c.id * 9.0, 3));   // width varies along the lane
+      float wL = uLaneWidth * (0.35 + 1.1 * fract(c.id * 13.0 + c.id2 * 7.0)) * along;
+      float lane = sstep(wL + tq, wL - tq, ed) * step(1.0 - uLaneCover, fract(c.id * 5.3 + c.id2 * 5.3));
       vec3 q2 = q * 2.1 + 11.0;
       Cell c2 = cellular(q2, 556u);
-      float ed2 = cellEdge(c2, q2);
-      float lane2 = sstep(wL * 0.7, wL * 0.45, ed2 + 0.03 * snoise(q2 * 4.0)) * step(1.0 - uLaneCover * 0.5, fract(c2.id * 9.1 + c2.id2 * 3.3));
+      float ed2 = cellEdge(c2, q2) + jn * 2.1;
+      float lane2 = sstep(wL * 0.6 + tq * 2.1, wL * 0.6 - tq * 2.1, ed2) * step(1.0 - uLaneCover * 0.5, fract(c2.id * 9.1 + c2.id2 * 3.3));
       float Lw = max(lane, 0.85 * lane2);
-      float gph = (lane >= lane2 ? ed : ed2) * uLaneGrooves + 0.5 * snoise(q * 6.0);
-      float gro = pow(abs(sin(gph * PI)), 0.8);
-      h += uLaneAmp * Lw * (0.6 * gro - 0.5);
+      // grooves run parallel to the lane, in sets that are broken, offset and of mixed spacing
+      float e0 = lane >= lane2 ? ed : ed2;
+      float setv = fbm(q * 5.0 + 3.0, 2);
+      float gph = e0 * uLaneGrooves * (0.7 + 0.6 * step(0.0, setv)) + 0.5 * snoise(q * 6.0) + 2.0 * step(0.0, setv);
+      float gro = pow(abs(sin(gph * PI)), 0.8) * (0.55 + 0.45 * sstep(-0.2, 0.3, snoise(q * 9.0 + 5.0)));
+      float bound = sstep(0.0, tq * 2.0, abs(e0 - wL) ) ;                 // small scarp where lane meets dark terrain
+      h += uLaneAmp * Lw * (0.6 * gro - 0.5) + uLaneAmp * 0.25 * (1.0 - bound) * Lw;
       float laneTone = 0.65 + 0.35 * fract((lane >= lane2 ? c.id + c.id2 : c2.id * 3.0 + c2.id2) * 17.3);
-      m.b = max(m.b, Lw * laneTone * (0.8 + 0.2 * gro) * (0.9 + 0.1 * snoise(q * 12.0))); }
+      laneTone *= 0.85 + 0.15 * sstep(-0.3, 0.3, jag(p, fr(uLaneScale * 0.03), uTex));
+      m.b = max(m.b, Lw * laneTone * (0.8 + 0.2 * gro) * (0.9 + 0.1 * snoise(q * 12.0)));
+      // arcuate furrow systems in the old dark terrain (remnants of ancient multi-ring impacts)
+      if (uFurrow > 0.0) {
+        vec3 qf = p * fr(uLaneScale * 1.6) + SO * 1.3;
+        Cell cf = cellular(qf, 561u);
+        float rr = length(qf - cf.c1);
+        float ph = rr * 45.0 + 1.5 * fbm(qf * 3.0, 3);
+        float fur = pow(sstep(0.75, 1.0, abs(sin(ph))), 1.5) * sstep(0.2, 0.6, rr) * sstep(1.2, 0.8, rr);
+        fur *= sstep(-0.1, 0.3, snoise(qf * 4.0 + 2.0)) * (1.0 - Lw);
+        h -= uFurrow * fur;
+        m.r = max(m.r, 0.25 * fur);
+      }
+    }
 ` },
     flows: { on: (U) => U.uFlowUnits > 0, code: String.raw`
     { float lowMask = 1.0 - 0.8 * sstep(-uTrans, uTrans, provAt(p));   // lobate lava-flow sheets
@@ -410,25 +434,66 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       m.b = max(m.b, mask * sstep(w, w * 0.3, ed) * 0.5); }
 ` },
     paterae: { on: (U) => U.uPateraDens > 0, code: String.raw`
-    { float f = fr(260.0);                      // Io paterae: dark lava floors, bright/red haloes
+    { float f = fr(260.0);                      // Io paterae: scalloped calderas, dark lava floors, flows, haloes
       for (int o = 0; o < L(2); o++) {
         vec3 q = p * f + SO;
         Cell c = cellular(q, 900u + uint(o));
         if (c.id < uPateraDens) {
           vec3 u = normalize(q - c.c1);
-          float lob = 1.0 + 0.22 * snoise(u * 1.6 + c.id * 50.0) + 0.05 * snoise(u * 4.0 + c.id * 30.0);
-          float rr = (0.05 + 0.2 * pow(fract(c.id * 31.0), 2.0)) * lob;
-          float inside = sstep(rr, rr * 0.9, c.f1);
-          h -= uPateraAmp * inside * (0.5 + fract(c.id * 7.0));
+          float tq = uTex * f;
+          // scalloped outline: arcuate bites + straight fault-controlled segments + fractal fringe
+          float ang = atan(u.y, u.x) + u.z;
+          float scal = 1.0 - 0.18 * pow(abs(sin(ang * (3.0 + floor(fract(c.id * 17.0) * 4.0)) + c.id * 20.0)), 0.5);
+          float lob = scal * (1.0 + 0.2 * snoise(u * 1.6 + c.id * 50.0));
+          float rr = (0.04 + 0.2 * pow(fract(c.id * 31.0), 2.0)) * lob;
+          float dj = c.f1 + uJag * 0.25 * rr * jag(p, f * 6.0, uTex);
+          float inside = sstep(rr + tq, rr - tq, dj);
           float kind = fract(c.id * 91.0);
-          m.g = max(m.g, inside * (0.6 + 0.4 * kind));
-          m.a = max(m.a, inside * sstep(0.7, 0.95, kind) * (0.5 + 0.5 * snoise(q * 8.0)));
-          float halo = sstep(rr * 2.6, rr, c.f1 + 0.05 * snoise(q * 5.0)) * (1.0 - inside);
+          // floor: mottled cooled-lava tones, fresh dark patches, occasional hot spots
+          float floorTone = 0.55 + 0.45 * sstep(-0.2, 0.3, jag(p, f * 10.0, uTex) + 0.3 * (kind - 0.5));
+          h -= uPateraAmp * inside * (0.5 + fract(c.id * 7.0));
+          h += 40.0 * sstep(rr * 1.25, rr, dj) * (1.0 - inside);           // low raised rim
+          m.g = max(m.g, inside * floorTone);
+          m.a = max(m.a, inside * sstep(0.7, 0.95, kind) * sstep(0.1, 0.6, snoise(q * 8.0) + 0.3 * jag(p, f * 12.0, uTex)));
+          // lobate lava flows spilling out: fingers of varying reach and darkness
+          if (uPateraFlows > 0.0 && rr > 0.08) {
+            // one or two broad lobate fans of dark lava, with ragged fronts
+            float fl = 0.0;
+            for (int k = 0; k < L(2); k++) {
+              float a0 = fract(c.id * (7.0 + 5.0 * float(k))) * TAU;
+              float da = abs(atan(sin(ang - a0), cos(ang - a0)));
+              float wid = 0.45 + 0.5 * fract(c.id * (11.0 + float(k)));
+              float reach = rr * (1.8 + 3.0 * fract(c.id * (13.0 + 3.0 * float(k)))) * sat(1.0 - sq(da / wid));
+              float front = dj + rr * 0.35 * jag(p, f * 5.0, uTex) * uJag;
+              fl = max(fl, sstep(reach + tq, reach - tq, front) * step(float(k), fract(c.id * 29.0) * 1.6));
+            }
+            float flow = fl * (1.0 - inside) * uPateraFlows;
+            m.g = max(m.g, flow * (0.3 + 0.35 * fract(c.id * 5.7)) * (0.75 + 0.25 * floorTone));
+            h += 25.0 * flow;
+          }
+          float halo = frayed(sstep(rr * 2.6, rr, dj) * (1.0 - inside), jag(p, f * 4.0, uTex), 1.0);
           float hk = fract(c.id * 57.0);
-          if (hk < 0.1) m.b = max(m.b, halo * 0.4); else if (hk < 0.18) m.r = max(m.r, halo * 0.3);
+          if (hk < 0.1) m.b = max(m.b, halo * 0.4); else if (hk < 0.2) m.r = max(m.r, halo * 0.3);
         }
         f *= 2.2;
       } }
+` },
+    texture: { on: (U) => U.uMicro > 0, code: String.raw`
+    { vec3 tu = terrainUnits(p, SO, uR, uTex, uUnitScale);     // geological units with ragged contacts
+      float smoothU = 1.0 - tu.x - tu.y;
+      float fM = fr(uUnitScale * 0.08);
+      int oM = octaves(fM, uTex);
+      float hum = ridgedEroded(p * fM + SO * 3.3, oM, 2.1, 0.58, 1.5) - 0.3;   // hummocky, blocky
+      float pits = erodedFbm(p * fM * 2.0 - SO, max(1, oM - 1), 2.0, 0.55, 2.0);
+      // lineated fabric: fine parallel ridges whose direction changes from unit to unit
+      vec3 dirU = normalize(hash33(ivec3(int(tu.z), 7, 3), 41u) - 0.5);
+      float fl = fr(uUnitScale * 0.03);
+      float li = pow(abs(sin(dot(p, dirU) * fl + 2.0 * fbm(p * fl * 0.1, 3))), 0.7) - 0.5;
+      li *= 0.6 + 0.4 * sstep(-0.3, 0.3, snoise(p * fl * 0.08));
+      h += uMicro * (tu.x * hum + tu.y * (0.6 * li + 0.3 * pits) + smoothU * 0.25 * pits);
+      // contacts: the rougher unit stands slightly proud with a ragged edge
+      h += uMicro * 0.6 * (tu.x + 0.5 * tu.y);
+    }
 ` },
     dunes: { on: (U) => U.uDunes > 0, code: String.raw`
     { float fd = fr(2.5);                       // transverse dunes in low, flat, sandy ground
@@ -480,7 +545,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
 
   // Passes: feature groups sharing one small shader. Heavy features get a pass of their own.
   const STAGE0 = [['base', 'montes', 'rubble'], ['scarps'], ['tesserae', 'shields', 'blocks'], ['oldCraters'], ['list0', 'mare', 'wrinkle']];
-  const STAGE1 = [['craters'], ['list1'], ['lineaeNet'], ['lanes'], ['flows', 'cracks'], ['grooves', 'chaos', 'canyonNet'], ['paterae', 'dunes', 'terraces', 'lava', 'caps']];
+  const STAGE1 = [['texture'], ['lanes'], ['lineaeNet'], ['craters'], ['list1'], ['flows', 'cracks'], ['grooves', 'chaos', 'canyonNet'], ['paterae'], ['dunes', 'terraces', 'lava', 'caps']];
 
   function passSource(names) {
     const defs = [...new Set(names.map((n) => BLOCKS[n].def).filter(Boolean))].map((d) => `#define ${d} 1`).join('\n');
@@ -551,7 +616,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       uPateraDens: n(P.paterae) / 200, uPateraAmp: n(P.pateraDepth, 800), uMtnAmp: n(P.blockMountains), uMtnCover: n(P.blockCover, 0.08),
       uDunes: n(P.dunes), uTerrace: n(P.terraces), uMare: n(P.maria), uMareLevel: n(P.mareLevel, -1500),
       uLavaLevel: P.lavaSea ? n(P.lavaLevel, -500) : -1e9, uLavaCracks: n(P.lavaCracks),
-      uScarpAmp: n(P.scarps), uScarpScale: n(P.scarpScale, 600), uScarpLip: n(P.scarpLip, 0.3), uRubble: n(P.rubble),
+      uScarpAmp: n(P.scarps), uScarpScale: n(P.scarpScale, 600), uScarpLip: n(P.scarpLip, 0.3), uRubble: n(P.rubble), uMicro: n(P.microRelief), uUnitScale: n(P.unitScale, 250), uJag: n(P.edgeJag, 1), uFurrow: n(P.furrows), uPalimp: n(P.palimpsests), uPateraFlows: n(P.pateraFlows), uSecondYoung: n(P.youngSecondary),
       uCapH: P.iceCaps ? n(P.capHeight, 2500) : 0, uCapLat: Math.sin((90 - n(P.capSize, 8)) * Math.PI / 180),
     };
   }

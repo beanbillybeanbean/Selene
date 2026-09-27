@@ -82,6 +82,28 @@ float ridgedEroded(vec3 p, int oct, float lac, float gain, float k) {
 // band-limited octave count: finest wavelength about two texels
 int octaves(float f0, float texAng) { return clamp(int(log2((0.33 / texAng) / f0)) + 1, 1, 14); }
 
+// ---------------------------------------------------------------- fractal detail helpers
+// Rough band-limited fBm from frequency f0 down to about two texels (gain 0.6 = rocky, not smooth).
+float jag(vec3 p, float f0, float tex) { return fbm(p * f0, octaves(f0, tex), 2.1, 0.6); }
+// Fray a coverage value: leaves 0 and 1 alone but breaks up the transition zone into ragged,
+// patchy, fractal edges (deposits and outcrops, never a smooth airbrushed gradient).
+float frayed(float x, float j, float k) { x = clamp(x, 0.0, 1.0); return clamp(x + k * j * 4.0 * x * (1.0 - x), 0.0, 1.0); }
+
+// Terrain units: the ground is a patchwork of geological units (flows, deposits, old crust), each
+// with its own roughness style, meeting along sharp, ragged contacts.
+// Returns x = rough/hummocky weight, y = lineated/fractured weight (rest = smooth plains), z = unit id.
+vec3 terrainUnits(vec3 p, vec3 so, float R, float tex, float scaleKm) {
+  float f = R / (scaleKm * 1000.0);
+  vec3 q = p * f + so * 1.7;
+  q += 0.35 * vec3(fbm(q * 0.5 + 3.1, 3), fbm(q * 0.5 - 1.7, 3), fbm(q * 0.5 + 7.3, 3));
+  float j = 0.18 * jag(p, f * 4.0, tex);
+  float a = fbm(q, 4) + j, b = fbm(q * 1.3 + 11.0, 4) - j;
+  float w = max(tex * f * 0.9, 0.012);                  // contact width ~ a texel: sharp but not aliased
+  float rough = sstep(0.08 - w, 0.08 + w, a);
+  float lin = sstep(0.1 - w, 0.1 + w, b) * (1.0 - rough);
+  return vec3(rough, lin, floor((a + 1.0) * 3.0) + floor((b + 1.0) * 3.0) * 7.0);
+}
+
 // ---------------------------------------------------------------- cellular noise with centres
 struct Cell { float f1; float f2; vec3 c1; vec3 c2; float id; float id2; };
 Cell cellular(vec3 p, uint seed) {

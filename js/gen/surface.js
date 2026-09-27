@@ -14,7 +14,8 @@
   const WORLD_COLORS = ['low', 'high', 'alt', 'alt2', 'polar', 'hemi', 'cliff', 'dark', 'second', 'bright', 'ice', 'lava'];
 
   const FS = String.raw`
-uniform sampler2DArray uH, uClim, uA, uMat;
+//#include planet
+uniform sampler2DArray uH, uClim, uA, uMat, uHb;
 uniform int uModel;
 uniform float uSea, uR, uSeed, uHasA, uVar, uHmin, uHmax;
 // terran palette (linear)
@@ -26,6 +27,7 @@ uniform vec3 uC[12];
 uniform float uPolarSide;
 uniform float uHeightK, uColorDist, uRegional, uRegScale, uRegTopo, uRegional2, uPolarK, uPolarLat, uHemiK;
 uniform vec3 uHemiDir;
+uniform float uLSeed, uUnitScale, uUnitTone, uFray, uRelK, uRelScale, uTex;
 uniform float uSlopeK, uCurvK, uDarkK, uSecondK, uBrightK, uIceK, uEmissive, uMottle, uDustLow;
 layout(location = 0) out vec4 o;
 layout(location = 1) out vec4 oE;
@@ -102,9 +104,10 @@ void main() {
     // regional albedo provinces: soft, blotchy, optionally tied to topography
     // large soft shapes; fine octaves only fray the edges
     float reg = warped(dp * uRegScale + so * 1.7, 3, 0.45) + 0.16 * fbm(dp * uRegScale * 6.0 + so, 5) + uRegTopo * (hn - 0.5) + 0.12 * dist;
-    c = mix(c, uC[2], sstep(-0.3, 0.35, reg) * uRegional);
+    float jA = jag(p, uR / 60000.0, uTex), jB = jag(p + 3.7, uR / 25000.0, uTex), jC = jag(p - 5.1, uR / 120000.0, uTex);
+    c = mix(c, uC[2], frayed(sstep(-0.3, 0.35, reg), jA, uFray) * uRegional);
     float reg2 = warped(dp * uRegScale * 1.3 - so * 2.3, 3, 0.45) + 0.16 * fbm(dp * uRegScale * 7.0 - so, 5) - 0.08 * dist;
-    c = mix(c, uC[3], sstep(-0.1, 0.4, reg2) * uRegional2);
+    c = mix(c, uC[3], frayed(sstep(-0.1, 0.4, reg2), jC, uFray) * uRegional2);
     // dust settles in lows (or highs when negative)
     c = mix(c, uC[2], sat(uDustLow * (0.5 - hn) * 2.0) * 0.6);
     // latitude and hemisphere tints
@@ -115,9 +118,20 @@ void main() {
     c = mix(c, uC[6], sstep(0.12, 0.5, slope) * uSlopeK);
     c *= 1.0 + uCurvK * curv;
     // material layers
-    c = mix(c, uC[7], sat(m.g * uDarkK));
-    c = mix(c, uC[8], sat(m.b * uSecondK));
-    c = mix(c, uC[9], sat(m.r * uBrightK));
+    c = mix(c, uC[7], frayed(m.g * uDarkK, jB, uFray));
+    c = mix(c, uC[8], frayed(m.b * uSecondK, jA, uFray));
+    c = mix(c, uC[9], frayed(m.r * uBrightK, jC, uFray));
+    // geological units: each unit has its own slight tone, with the same ragged contacts as the relief
+    if (uUnitTone > 0.0) {
+      vec3 tu = terrainUnits(p, seedOff(uLSeed), uR, uTex, uUnitScale);
+      float su = 1.0 - tu.x - tu.y;
+      c *= 1.0 + uUnitTone * (0.08 * tu.x - 0.05 * su + 0.03 * tu.y + 0.08 * (fract(tu.z * 0.37) - 0.5));
+    }
+    // local relief: knobs, crests and rims catch fresher, brighter material; hollows collect dark fines
+    if (uRelK > 0.0) {
+      float rel = h - sampleDirCubic(uHb, p);
+      c *= 1.0 + uRelK * 0.14 * clamp(rel / uRelScale, -1.5, 1.5);
+    }
     if (uEmissive > 0.5) {
       float heat = sat(m.a);
       c = mix(c, uC[11], sstep(0.3, 0.8, heat));
@@ -148,6 +162,9 @@ void main() {
     WORLD_COLORS.forEach((k, i) => arr.set(hexLin(C[k] || '#808080'), i * 3));
     const n = (v, d = 0) => (v === undefined || v === null ? d : +v);
     const out = gpu.field(ctx.N, 'rgba8', 'albedo'), em = gpu.field(ctx.N, 'rgba8', 'emission');
+    // coarse copy of the height (1/8 resolution) for the local-relief tone
+    const Hb = gpu.field(Math.max(16, ctx.N / 8), 'r32f');
+    ctx.ops.resample(fields.H, Hb);
     const hd = S.randDir(S.rng(ctx.seed + 99));
     await gpu.runTiled(prog, [out, em], {
       ...U, uC: arr,
@@ -160,8 +177,10 @@ void main() {
       uRegTopo: n(P.regionalTopo), uRegional2: n(P.regional2), uPolarK: n(P.polarTint), uPolarLat: n(P.polarLat, 0.7), uPolarSide: n(P.polarSide),
       uHemiK: n(P.hemiTint), uHemiDir: P.hemiDir || hd, uSlopeK: n(P.cliffColor), uCurvK: n(P.curvatureColor),
       uDarkK: n(P.darkMaterial, 1), uSecondK: n(P.secondMaterial, 1), uBrightK: n(P.brightMaterial, 1), uIceK: n(P.iceMaterial, 1),
-      uEmissive: P.emissive ? 1 : 0, uMottle: n(P.colorVariation, 1), uDustLow: n(P.dustInLows),
+      uEmissive: P.emissive ? 1 : 0, uHb: Hb, uLSeed: (ctx.seed % 10007) + 0.5, uUnitScale: n(P.unitScale, 250), uUnitTone: P.microRelief > 0 ? n(P.unitTone, 1) : 0,
+      uFray: n(P.colorFray, 0.8), uRelK: n(P.reliefColor, 0.6), uRelScale: Math.max(50, ((ctx.hmax ?? 5000) - (ctx.hmin ?? -5000)) * 0.03), uTex: Math.PI / 2 / ctx.N, uMottle: n(P.colorVariation, 1), uDustLow: n(P.dustInLows),
     }, { progress: (f) => report('Painting the surface', 0.95 + 0.04 * f) });
+    gpu.free(Hb);
     return { albedo: out, emission: em };
   }
 
