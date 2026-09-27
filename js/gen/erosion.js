@@ -146,7 +146,7 @@ void main() {
         [as, at] = [at, as];
         gpu.run(erode, ht, { ...U, uH: hs, uW: W, uA: as });
         [hs, ht] = [ht, hs];
-        if (k % 4 === 3) {
+        if (n >= 1024 || k % 4 === 3) {   // big grids: wait every step so no submission gets long
           await gpu.sync();
           report(`Eroding river valleys (${n}² per face, step ${k + 1}/${it})`, p0 + (p1 - p0) * (done + k) / allIt);
         }

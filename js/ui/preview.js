@@ -119,7 +119,7 @@ void main() {
       const w = Math.max(1, Math.round(cv.clientWidth * dpr)), h = Math.max(1, Math.round(cv.clientHeight * dpr));
       if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; this.dirty = true; }
       if (this.spin && this.view === 0 && this.world) { this.yaw += 0.0015; this.dirty = true; }
-      if (!this.dirty || this.busy) return;
+      if (!this.dirty || this.busy || gpu.lost) return;
       this.dirty = false;
       if (!this.world) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h); gl.clearColor(0.012, 0.014, 0.02, 1); gl.clear(gl.COLOR_BUFFER_BIT); return; }
       const W = this.world;

@@ -57,8 +57,7 @@ float snoiseGrad(vec3 v, out vec3 grad) {
 // so detail collects in valleys and on flats while ridgelines stay clean — reads like erosion.
 float erodedFbm(vec3 p, int oct, float lac, float gain, float k) {
   float a = 0.0, b = 1.0, norm = 0.0; vec3 d = vec3(0.0);
-  for (int i = 0; i < 16; i++) {
-    if (i >= oct) break;
+  for (int i = 0; i < oct; i++) {
     vec3 g; float n = snoiseGrad(p, g);
     d += g * b;
     a += b * n / (1.0 + k * dot(d, d));
@@ -70,8 +69,7 @@ float erodedFbm(vec3 p, int oct, float lac, float gain, float k) {
 // Ridged multifractal whose finer octaves are eroded away on steep ground (sharp crests, gullied flanks)
 float ridgedEroded(vec3 p, int oct, float lac, float gain, float k) {
   float sum = 0.0, amp = 1.0, w = 1.0, norm = 0.0; vec3 d = vec3(0.0);
-  for (int i = 0; i < 16; i++) {
-    if (i >= oct) break;
+  for (int i = 0; i < oct; i++) {
     vec3 g; float n = snoiseGrad(p, g);
     d += g * amp * (n < 0.0 ? 1.0 : -1.0);
     float r = 1.0 - abs(n); r *= r; r *= w;
@@ -89,8 +87,8 @@ struct Cell { float f1; float f2; vec3 c1; vec3 c2; float id; float id2; };
 Cell cellular(vec3 p, uint seed) {
   ivec3 c = ivec3(floor(p));
   Cell r; r.f1 = 9.0; r.f2 = 9.0; r.c1 = vec3(0.0); r.c2 = vec3(0.0); r.id = 0.0; r.id2 = 0.0;
-  for (int k = -1; k <= 1; k++) for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
-    ivec3 q = c + ivec3(i, j, k);
+  for (int n = 0; n < uL27; n++) {
+    ivec3 q = c + ivec3(n % 3, (n / 3) % 3, n / 9) - 1;
     vec3 pt = vec3(q) + hash33(q, seed);
     float d = length(pt - p);
     if (d < r.f1) { r.f2 = r.f1; r.c2 = r.c1; r.id2 = r.id; r.f1 = d; r.c1 = pt; r.id = hash13(q, seed + 77u); }

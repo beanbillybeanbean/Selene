@@ -29,8 +29,7 @@ int octFor(float f0) { return clamp(int(log2((0.30 / uCellAng) / f0)) + 1, 1, 12
 
 void plates(vec3 p, out int i1, out int i2, out float b) {
   float d1 = 1e9, d2 = 1e9; i1 = 0; i2 = 0;
-  for (int i = 0; i < MAXP; i++) {
-    if (i >= uPlateCount) break;
+  for (int i = 0; i < uPlateCount; i++) {
     float d = acos(clamp(dot(p, uPlate[i].xyz), -1.0, 1.0)) - uPlate[i].w;
     if (d < d1) { d2 = d1; i2 = i1; d1 = d; i1 = i; } else if (d < d2) { d2 = d; i2 = i; }
   }
@@ -129,8 +128,7 @@ void main() {
   if (uTect < 0.5) h += uRough * 0.7 * ridged(p * fR * 0.3 - so, octFor(fR * 0.3), 2.0, 0.55);
 
   // --- shield volcanoes / hotspot chains
-  for (int i = 0; i < MAXV; i++) {
-    if (i >= uVolcCount) break;
+  for (int i = 0; i < uVolcCount; i++) {
     vec4 v = uVolc[i], vp = uVolcP[i];
     float d = gcDist(p, v.xyz) / v.w;
     if (d > 1.3) continue;
@@ -196,7 +194,8 @@ void main() {
   // ctx: {gpu, ops, N, P (params), R (geological radius m), seed}
   async function build(ctx, report) {
     const { gpu, P } = ctx;
-    const prog = gpu.program('terrain', FS);
+    report('Compiling terrain shaders', 0.01);
+    const prog = await gpu.programAsync('terrain', FS);
     const r = S.rng(ctx.seed * 31 + 7);
     const plates = P.tectonics ? makePlates(r, Math.round(P.plates), P.continentBias ?? 0.18) : [];
     const pl = new Float32Array(MAXP * 4), pv = new Float32Array(MAXP * 4);
@@ -224,7 +223,7 @@ void main() {
     // 2) full-resolution relief
     report('Raising continents and mountain belts', 0.05);
     const H = gpu.field(ctx.N, 'r32f', 'H0'), T = gpu.field(ctx.N, 'rgba16f', 'T');
-    gpu.run(prog, [H, T], { ...U, uMode: 1, uThresh: thr, uCellAng: Math.PI / 2 / ctx.N });
+    await gpu.runTiled(prog, [H, T], { ...U, uMode: 1, uThresh: thr, uCellAng: Math.PI / 2 / ctx.N });
     await gpu.sync();
     ctx.plates = plates;
     return { H, T };

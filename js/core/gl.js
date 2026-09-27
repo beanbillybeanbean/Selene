@@ -27,6 +27,9 @@ void main() {
       const need = ['EXT_color_buffer_float', 'EXT_float_blend'];
       for (const e of need) if (!gl.getExtension(e)) throw new Error(`Your GPU/browser lacks ${e}, which Selene needs for 32-bit float simulation.`);
       gl.getExtension('OES_texture_float_linear');
+      this.parallel = gl.getExtension('KHR_parallel_shader_compile');
+      this.lost = false;
+      canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.lost = true; if (this.onLost) this.onLost(); });
       this.gl = gl;
       this.canvas = canvas;
       this.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
@@ -42,39 +45,63 @@ void main() {
 
     // ------------------------------------------------------------------ programs
     // frag: fragment source WITHOUT the #version line; the common GLSL library is prepended.
-    program(key, frag, vert) {
-      if (this.programs.has(key)) return this.programs.get(key);
+    _start(key, frag, vert) {
       const gl = this.gl;
+      if (this.lost || gl.isContextLost()) throw lostError();
       const fsrc = '#version 300 es\n#define FRAG 1\n' + S.GLSL.header + S.GLSL.lib + '\n' + frag.replace('//#include planet', S.GLSL.planet || '');
       const vsrc = vert ? '#version 300 es\n' + S.GLSL.header + S.GLSL.lib + '\n' + vert : VERT_FULLSCREEN;
-      const compile = (type, src) => {
-        const sh = gl.createShader(type);
-        gl.shaderSource(sh, src);
-        gl.compileShader(sh);
-        if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-          const log = gl.getShaderInfoLog(sh);
-          const lines = src.split('\n').map((l, i) => `${i + 1}: ${l}`);
-          const m = /ERROR: \d+:(\d+)/.exec(log || '');
-          const ctx = m ? lines.slice(Math.max(0, +m[1] - 4), +m[1] + 2).join('\n') : '';
-          throw new Error(`Shader "${key}" failed to compile:\n${log}\n${ctx}`);
-        }
-        return sh;
-      };
+      const mk = (type, src) => { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); return sh; };
+      const vs = mk(gl.VERTEX_SHADER, vsrc), fs = mk(gl.FRAGMENT_SHADER, fsrc);
       const p = gl.createProgram();
-      gl.attachShader(p, compile(gl.VERTEX_SHADER, vsrc));
-      gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fsrc));
+      gl.attachShader(p, vs); gl.attachShader(p, fs);
       gl.linkProgram(p);
-      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(`Program "${key}" failed to link: ${gl.getProgramInfoLog(p)}`);
-      const uniforms = new Map();
-      const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
-      for (let i = 0; i < n; i++) {
-        const info = gl.getActiveUniform(p, i);
-        const name = info.name.replace(/\[0\]$/, '');
-        uniforms.set(name, { loc: gl.getUniformLocation(p, info.name), type: info.type, size: info.size });
+      return { key, p, vs, fs, vsrc, fsrc };
+    }
+    _finish(st) {
+      const gl = this.gl;
+      if (this.lost || gl.isContextLost()) throw lostError();
+      if (!gl.getProgramParameter(st.p, gl.LINK_STATUS)) {
+        for (const [sh, src] of [[st.vs, st.vsrc], [st.fs, st.fsrc]]) {
+          if (gl.getShaderParameter(sh, gl.COMPILE_STATUS)) continue;
+          const log = gl.getShaderInfoLog(sh) || '';
+          const lines = src.split('\n').map((l, i) => `${i + 1}: ${l}`);
+          const m = /ERROR: \d+:(\d+)/.exec(log);
+          const ctx = m ? lines.slice(Math.max(0, +m[1] - 4), +m[1] + 2).join('\n') : '';
+          throw new Error(`Shader "${st.key}" failed to compile:\n${log}\n${ctx}`);
+        }
+        const log = gl.getProgramInfoLog(st.p);
+        if (gl.isContextLost()) throw lostError();
+        throw new Error(`Program "${st.key}" failed to link: ${log || '(the driver gave no reason — usually the GPU driver gave up on a very large shader)'}`);
       }
-      const prog = { key, p, uniforms };
-      this.programs.set(key, prog);
+      gl.deleteShader(st.vs); gl.deleteShader(st.fs);
+      const uniforms = new Map();
+      const n = gl.getProgramParameter(st.p, gl.ACTIVE_UNIFORMS);
+      for (let i = 0; i < n; i++) {
+        const info = gl.getActiveUniform(st.p, i);
+        const name = info.name.replace(/\[0\]$/, '');
+        uniforms.set(name, { loc: gl.getUniformLocation(st.p, info.name), type: info.type, size: info.size });
+      }
+      const prog = { key: st.key, p: st.p, uniforms };
+      this.programs.set(st.key, prog);
       return prog;
+    }
+    // blocking compile (fine for small shaders)
+    program(key, frag, vert) {
+      if (this.programs.has(key)) return this.programs.get(key);
+      return this._finish(this._start(key, frag, vert));
+    }
+    // non-blocking compile: lets the browser compile on a background thread while the page stays alive
+    async programAsync(key, frag, vert) {
+      if (this.programs.has(key)) return this.programs.get(key);
+      const st = this._start(key, frag, vert);
+      if (this.parallel) {
+        const DONE = this.parallel.COMPLETION_STATUS_KHR;
+        while (!this.gl.getProgramParameter(st.p, DONE)) {
+          if (this.lost || this.gl.isContextLost()) throw lostError();
+          await new Promise((r) => setTimeout(r, 15));
+        }
+      }
+      return this._finish(st);
     }
 
     _bind(prog, uniforms) {
@@ -83,6 +110,7 @@ void main() {
       let unit = 0;
       for (const [name, u] of prog.uniforms) {
         let v = uniforms[name];
+        if (v === undefined && name === 'uL27') v = 27;
         if (v === undefined) {
           if (u.type !== gl.SAMPLER_2D_ARRAY && u.type !== gl.SAMPLER_2D) continue;
           v = u.type === gl.SAMPLER_2D ? this._dummy2D() : this._dummyArr(); // never leave a sampler on a render target
@@ -148,6 +176,7 @@ void main() {
       gl.viewport(0, 0, N, N);
       const bufs = targets.map((_, i) => gl.COLOR_ATTACHMENT0 + i);
       gl.drawBuffers(bufs);
+      if (opts.rect) { gl.enable(gl.SCISSOR_TEST); gl.scissor(opts.rect[0], opts.rect[1], opts.rect[2], opts.rect[3]); }
       if (opts.blend === 'premul') { gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); }
       else if (opts.blend === 'add') { gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); }
       const faceLoc = prog.uniforms.get('uFace');
@@ -160,6 +189,27 @@ void main() {
       }
       for (let i = 0; i < targets.length; i++) gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, null, 0, 0);
       if (opts.blend) gl.disable(gl.BLEND);
+      if (opts.rect) gl.disable(gl.SCISSOR_TEST);
+    }
+
+    // Run a heavy pass in small tiles, waiting for the GPU between batches so no single submission
+    // runs long enough to trip the OS GPU watchdog (Windows resets the driver after ~2 s).
+    async runTiled(prog, targets, uniforms = {}, opts = {}) {
+      const N = (Array.isArray(targets) ? targets[0] : targets).N;
+      const T = Math.min(N, opts.tile || 128);
+      const tiles = [];
+      for (let f = 0; f < 6; f++) for (let y = 0; y < N; y += T) for (let x = 0; x < N; x += T) tiles.push([f, x, y]);
+      let batch = 1, i = 0;
+      while (i < tiles.length) {
+        const t0 = performance.now();
+        const end = Math.min(tiles.length, i + batch);
+        for (; i < end; i++) { const [f, x, y] = tiles[i]; this.run(prog, targets, uniforms, { ...opts, faces: [f], rect: [x, y, T, T] }); }
+        await this.sync();
+        if (this.lost || this.gl.isContextLost()) throw lostError();
+        const per = (performance.now() - t0) / batch;
+        batch = Math.max(1, Math.min(96, Math.floor(120 / Math.max(per, 0.05))));
+        if (opts.progress) opts.progress(i / tiles.length);
+      }
     }
 
     // ------------------------------------------------------------------ plain 2D targets
@@ -238,6 +288,10 @@ void main() {
       }
       gl.deleteSync(s);
     }
+  }
+
+  function lostError() {
+    return new Error('The GPU driver reset (WebGL context lost). This happens when the graphics driver decides a job is taking too long.\n\nReload the page (F5) and try again — a lower resolution, or closing other GPU-heavy programs, helps. If it keeps happening, tell me your GPU model.');
   }
 
   S.GPU = GPU;

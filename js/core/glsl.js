@@ -11,6 +11,7 @@ precision highp sampler2DArray;
 precision highp sampler2D;
 uniform int uFace;
 uniform int uN;
+uniform int uL27;   // always 27; loop bounds read from a uniform can't be unrolled by the D3D compiler
 `;
 
   const lib = String.raw`
@@ -18,6 +19,9 @@ const float PI = 3.14159265358979;
 const float TAU = 6.28318530717959;
 const float QPI = 0.785398163397448;
 
+// L(n) == n at run time, but opaque to the compiler, so loops like for (k < L(5)) stay loops.
+// (Windows/ANGLE translates GLSL to HLSL and fxc otherwise unrolls nested loops into huge shaders.)
+int L(int n) { return n * uL27 / 27; }
 float sat(float x) { return clamp(x, 0.0, 1.0); }
 vec3 sat3(vec3 x) { return clamp(x, 0.0, 1.0); }
 float sstep(float a, float b, float x) { return smoothstep(a, b, x); }
@@ -177,8 +181,7 @@ vec3 seedOff(float s) { return vec3(fract(sin(s * 12.9898) * 43758.5453), fract(
 
 float fbm(vec3 p, int oct, float lac, float gain) {
   float a = 1.0, s = 0.0, n = 0.0;
-  for (int i = 0; i < 16; i++) {
-    if (i >= oct) break;
+  for (int i = 0; i < oct; i++) {
     s += a * snoise(p); n += a; a *= gain;
     p = ROT * p * lac + vec3(1.7, 9.2, -3.1);
   }
@@ -188,8 +191,7 @@ float fbm(vec3 p, int oct) { return fbm(p, oct, 2.0, 0.5); }
 // Musgrave ridged multifractal: sharp crests, smooth valleys; heterogeneity via weight feedback
 float ridged(vec3 p, int oct, float lac, float gain) {
   float sum = 0.0, amp = 1.0, w = 1.0, norm = 0.0;
-  for (int i = 0; i < 16; i++) {
-    if (i >= oct) break;
+  for (int i = 0; i < oct; i++) {
     float n = 1.0 - abs(snoise(p));
     n *= n; n *= w;
     w = sat(n * 2.0);
@@ -211,8 +213,8 @@ vec3 warpVec(vec3 p, int oct) {
 vec3 worley(vec3 p, uint seed) {
   ivec3 c = ivec3(floor(p));
   float f1 = 9.0, f2 = 9.0, id = 0.0;
-  for (int k = -1; k <= 1; k++) for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
-    ivec3 q = c + ivec3(i, j, k);
+  for (int n = 0; n < uL27; n++) {
+    ivec3 q = c + ivec3(n % 3, (n / 3) % 3, n / 9) - 1;
     vec3 h = hash33(q, seed);
     float d = length(vec3(q) + h - p);
     if (d < f1) { f2 = f1; f1 = d; id = hash13(q, seed + 77u); } else if (d < f2) f2 = d;

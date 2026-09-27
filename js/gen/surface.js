@@ -138,9 +138,9 @@ void main() {
     return s.map((x) => (x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)));
   };
 
-  function run(ctx, fields) {
+  async function run(ctx, fields, report = () => {}) {
     const { gpu, P } = ctx;
-    const prog = gpu.program('surface', FS);
+    const prog = await gpu.programAsync('surface', FS);
     const C = P.colors || {};
     const U = {};
     if (P.model === 'terran') for (const k in C) U['u' + k[0].toUpperCase() + k.slice(1)] = hexLin(C[k]);
@@ -149,7 +149,7 @@ void main() {
     const n = (v, d = 0) => (v === undefined || v === null ? d : +v);
     const out = gpu.field(ctx.N, 'rgba8', 'albedo'), em = gpu.field(ctx.N, 'rgba8', 'emission');
     const hd = S.randDir(S.rng(ctx.seed + 99));
-    gpu.run(prog, [out, em], {
+    await gpu.runTiled(prog, [out, em], {
       ...U, uC: arr,
       uH: fields.H, uClim: fields.clim || fields.H, uA: fields.A || fields.H, uMat: fields.M || fields.H,
       uHasA: fields.A ? 1 : 0, uModel: P.model === 'terran' ? 0 : 1,
@@ -161,7 +161,7 @@ void main() {
       uHemiK: n(P.hemiTint), uHemiDir: P.hemiDir || hd, uSlopeK: n(P.cliffColor), uCurvK: n(P.curvatureColor),
       uDarkK: n(P.darkMaterial, 1), uSecondK: n(P.secondMaterial, 1), uBrightK: n(P.brightMaterial, 1), uIceK: n(P.iceMaterial, 1),
       uEmissive: P.emissive ? 1 : 0, uMottle: n(P.colorVariation, 1), uDustLow: n(P.dustInLows),
-    });
+    }, { progress: (f) => report('Painting the surface', 0.95 + 0.04 * f) });
     return { albedo: out, emission: em };
   }
 

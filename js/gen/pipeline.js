@@ -36,7 +36,7 @@
     ctx.hmin = st.min; ctx.hmax = st.max;
     if (P.model === 'terran') { report('Computing climate', 0.74); clim = await S.Climate.run(ctx, H, report); }
     report('Painting the surface', 0.95);
-    const { albedo, emission } = S.Surface.run(ctx, { H, clim, A, M });
+    const { albedo, emission } = await S.Surface.run(ctx, { H, clim, A, M }, report);
     await gpu.sync();
     report('Done', 1);
     const w = new World(ctx, { H, T, A, M, clim, albedo, emission });

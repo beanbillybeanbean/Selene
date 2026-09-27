@@ -47,7 +47,7 @@
     // box-average a field whose face is k times larger (nested EAC grids line up exactly)
     down: `uniform sampler2DArray uSrc; uniform int uK; out vec4 o;
       void main() { ivec2 b = cellXY() * uK; vec4 s = vec4(0.0);
-        for (int j = 0; j < 16; j++) { if (j >= uK) break; for (int i = 0; i < 16; i++) { if (i >= uK) break; s += texelFetch(uSrc, ivec3(b + ivec2(i, j), uFace), 0); } }
+        for (int j = 0; j < uK; j++) { for (int i = 0; i < uK; i++) { s += texelFetch(uSrc, ivec3(b + ivec2(i, j), uFace), 0); } }
         o = s / float(uK * uK); }`,
     upCubic: `uniform sampler2DArray uSrc; out vec4 o; void main() { o = vec4(sampleDirCubic(uSrc, cellDir())); }`,
     upLinear: `uniform sampler2DArray uSrc; out vec4 o; void main() { o = sampleDir(uSrc, cellDir()); }`,

@@ -35,7 +35,7 @@ void main() {
     const prog = gpu.program('export.eq', EQ);
     const mode = layer === 'height' ? 0 : layer === 'albedo' || layer === 'emission' ? 1 : 2;
     const fmt = mode === 1 || mode === 2 ? 'rgba8' : 'rgba32f';
-    const stripH = Math.max(1, Math.min(Hh, Math.floor((mode === 0 ? 3e6 : 8e6) / W)));
+    const stripH = Math.max(1, Math.min(Hh, Math.floor(2e6 / W)));
     const strip = gpu.tex2D(W, stripH, fmt);
     const out = mode === 0 ? new Float32Array(W * Hh) : new Uint8Array(W * Hh * 4);
     const U = {

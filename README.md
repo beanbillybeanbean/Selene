@@ -29,6 +29,15 @@ Everything runs on your GPU in the browser. There is nothing to install.
 
 \*On a mid-range desktop GPU. Worlds with erosion (Mars, Earth) take longer.
 
+### If something goes wrong
+- **The first generation of each world type is slower.** Its shaders are compiled then, and on
+  Windows that can take a little while. The progress bar shows *compiling shaders* during this step.
+- **"GPU driver reset / context lost".** Windows restarts the graphics driver if one GPU job runs
+  too long. Selene splits all work into small chunks to avoid this. If it still happens, reload
+  the page (F5) and use a lower resolution.
+- **Laptops with two GPUs.** In Windows *Settings → System → Display → Graphics*, set your browser to
+  *High performance* so it uses the dedicated GPU.
+
 ## What gets exported
 
 | File | Use |

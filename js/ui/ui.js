@@ -205,6 +205,7 @@
     try {
       gpu = new S.GPU($('view'));
       preview = new S.Preview(gpu);
+      gpu.onLost = () => { preview.busy = true; showError(new Error('The GPU driver reset (WebGL context lost). Reload the page (F5) to continue. A lower resolution helps if it happens again.')); progress('GPU reset — reload the page', 0); };
     } catch (e) { showError(e); return; }
     S.WORLD_COLORS_USED = S.Surface.WORLD_COLORS;
     for (const [id, pr] of Object.entries(S.PRESETS)) $('preset').add(new Option(pr.name, id));
