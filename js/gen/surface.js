@@ -115,16 +115,24 @@ void main() {
     // regional albedo provinces: large soft shapes, streaked by wind, fine octaves fray the edges
     float reg = warped(ds * uRegScale + so * 1.7, 3, 0.45) + 0.16 * fbm(ds * uRegScale * 6.0 + so, 5) + uRegTopo * (hn - 0.5) + 0.12 * dist;
     float jA = jag(p, uR / 60000.0, uTex), jB = jag(p + 3.7, uR / 25000.0, uTex), jC = jag(p - 5.1, uR / 120000.0, uTex);
-    c = mix(c, uC[2], frayed(sstep(-0.3, 0.35, reg), jA, uFray) * uRegional);
+    c = mix(c, uC[2], frayed(sstep(-0.14, 0.18, reg + 0.06 * jA), jA, uFray) * uRegional);
     float reg2 = warped(ds * uRegScale * 1.3 - so * 2.3, 3, 0.45) + 0.16 * fbm(ds * uRegScale * 7.0 - so, 5) - 0.08 * dist;
-    c = mix(c, uC[3], frayed(sstep(-0.1, 0.4, reg2), jC, uFray) * uRegional2);
+    c = mix(c, uC[3], frayed(sstep(0.0, 0.26, reg2 + 0.06 * jC), jC, uFray) * uRegional2);
     // great provinces (after regional albedo so they stay the dominant large features)
     { vec3 pso = seedOff(uLSeed);
+      // local and broad relief (normalised): loose dark or bright material collects in hollows and
+      // basins and is stripped from crests, rims and cliffs, so province boundaries follow the terrain
+      float relL = clamp((h - sampleDirCubic(uHb, p)) / uRelScale, -1.5, 1.5);
+      float relB = clamp((sampleDirCubic(uHq, p) - sampleDirCubic(uH16, p)) / (uRelScale * 2.5), -1.5, 1.5);
+      float lie = -0.3 * relL - 0.35 * relB - 0.4 * sstep(0.15, 0.6, slope);
       for (int i = 0; i < L(3); i++) {
         if (uPv0[i].x < 0.5) continue;
         vec3 pv = provinceAt(i, p, uR, uTex, pso);
         vec4 K = uPvK[i];
-        float amt = sat(pv.x * K.x + pv.y * K.y);
+        float mk = pv.x;
+        if (uPv3[i].z != 0.0) { vec4 g = gPv; mk = sstep(g.y - g.z, g.y + g.z, g.x + uPv3[i].z * 0.12 * lie) * g.w; }
+        float amt = sat(mk * K.x + pv.y * K.y);
+        amt *= 0.84 + 0.16 * sat(0.5 + l2 + 0.6 * micro);   // deposits vary in thickness inside
         c = mix(c, uPvC[i], amt);
         c *= 1.0 + K.z * 0.25 * pv.z * (jA * 0.5 + 0.5);
       } }
@@ -153,7 +161,7 @@ void main() {
     if (uUnitTone > 0.0) {
       vec3 tu = terrainUnits(p, seedOff(uLSeed), uR, uTex, uUnitScale);
       float su = 1.0 - tu.x - tu.y;
-      c *= 1.0 + uUnitTone * (0.08 * tu.x - 0.05 * su + 0.03 * tu.y + 0.08 * (fract(tu.z * 0.37) - 0.5));
+      c *= 1.0 + uUnitTone * (0.08 * tu.x - 0.05 * su + 0.03 * tu.y + 0.035 * (fract(tu.z * 0.37) - 0.5));
     }
     // relief tone at two scales: knobs, crests and rims brighter; hollows and basins collect dark fines
     if (uRelK > 0.0) {
@@ -181,7 +189,7 @@ void main() {
       c = mix(c, uC[10] * (0.93 + 0.07 * micro), sat(m.a * uIceK));
     }
     // multi-scale mottling (keeps large flat areas from looking synthetic)
-    c *= 1.0 + uMottle * (0.1 * micro + 0.07 * l2 + 0.05 * l1);
+    c *= 1.0 + uMottle * (0.1 * micro + 0.035 * l2 + 0.025 * l1);
     // fine wind-streak texture (dust tails and dark streaks behind obstacles)
     if (uStreakTex > 0.0) {
       vec3 sp = p * (uR / 40000.0); sp -= ew * dot(sp, ew) * 0.92;

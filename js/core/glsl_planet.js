@@ -189,12 +189,17 @@ float ejectaBright(float d, float ang, float fresh, float seedf) {
 uniform vec4 uPv0[3];   // style, coverage 0..1, size km, edge raggedness
 uniform vec4 uPv1[3];   // interior detail m, edge detail m, wind stretch, seed
 uniform vec4 uPv2[3];   // latitude centre (deg), latitude width (deg), latitude strength, patch variety
+uniform vec4 uPv3[3];   // relief (m, + raised / - sunken), dune height (m), follow terrain (0..1), unused
 // x = mask, y = filaments / streak texture, z = edge band
+// gPv keeps the raw shape of the last call (value, threshold, edge width, patch intensity) so the colour
+// stage can move the boundary with the terrain
+vec4 gPv;
 vec3 provinceShape(vec4 A, vec4 B, vec4 Cq, float salt, vec3 p, float R, float tex, vec3 so);
 vec3 provinceAt(int i, vec3 p, float R, float tex, vec3 so) { return provinceShape(uPv0[i], uPv1[i], uPv2[i], float(i), p, R, tex, so); }
 // A = (style, coverage, size km, raggedness), B = (unused, unused, wind stretch, seed)
 vec3 provinceShape(vec4 A, vec4 B, vec4 Cq, float salt, vec3 p, float R, float tex, vec3 so) {
   int st = int(A.x + 0.5);
+  gPv = vec4(-1.0, 0.0, 0.05, 0.0);
   if (st == 0) return vec3(0.0);
   vec3 s2 = so + seedOff(B.w * 13.0 + salt * 7.0 + 1.0);
   float f = R / (max(A.z, 1.0) * 1000.0);
@@ -202,21 +207,24 @@ vec3 provinceShape(vec4 A, vec4 B, vec4 Cq, float salt, vec3 p, float R, float t
   float stretch = st == 3 ? max(B.z, 0.5) : B.z;
   if (stretch > 0.0) { vec3 e = eastOf(p); q = p - e * dot(p, e) * stretch * 0.8; }
   vec3 w = q * f + s2;
-  float v = warped(w, 2, 0.7) + 0.08 * fbm(w * 3.0, 4) + A.w * 0.06 * jag(p, f * 12.0, tex);
+  // outline: large warped shape plus rough fractal detail at every scale from ~1/4 of the province
+  // size down to the texel, so edges break into inlets, peninsulas and outlying islands (not blobs)
+  float v = warped(w, 2, 0.7) + 0.08 * fbm(w * 3.0, 4) + A.w * (0.09 * jag(p + s2, f * 4.0, tex) + 0.04 * jag(p - s2, f * 20.0, tex));
   // latitude bias: concentrate the provinces in a band (e.g. Mars' dark southern low latitudes)
   if (Cq.z != 0.0) { float la = degrees(asin(clamp(p.y, -1.0, 1.0))); v += Cq.z * 0.7 * (exp(-sq((la - Cq.x) / max(Cq.y, 1.0))) - 0.45); }
   if (st == 4) {                                         // scattered patches: many ragged blobs of distinct terrain
     vec3 w4 = q * f * 3.0 + s2;
-    float pv = fbm(w4 + 0.6 * warpVec(w4 * 0.5, 2), 5, 2.1, 0.55) + A.w * 0.08 * jag(p, f * 30.0, tex) + 0.5 * (v - 0.3) * Cq.z;
+    float pv = fbm(w4 + 0.6 * warpVec(w4 * 0.5, 2), 5, 2.1, 0.55) + A.w * (0.07 * jag(p + s2, f * 8.0, tex) + 0.025 * jag(p, f * 30.0, tex)) + 0.5 * (v - 0.3) * Cq.z;
     float thr4 = 0.35 - 0.7 * A.y;
-    float ew4 = max(0.015, tex * f * 3.0);
+    float ew4 = max(0.03, tex * f * 3.0);
     float m4 = sstep(thr4 - ew4, thr4 + ew4, pv);
-    Cell cc = cellular(w4 * 0.8, 404u);                  // each patch has its own intensity
-    float vary = mix(1.0, 0.45 + 0.55 * cc.id, Cq.w);
+    // patch intensity drifts smoothly from patch to patch (no polygonal jumps)
+    float vary = mix(1.0, 0.4 + 0.6 * sat(0.5 + 1.1 * fbm(w4 * 0.45 + 5.3, 3)), Cq.w);
+    gPv = vec4(pv, thr4, ew4, vary);
     return vec3(m4 * vary, m4 * sstep(0.0, 0.4, fbm(w4 * 4.0, 3)), exp(-sq((pv - thr4) / (ew4 * 4.0))));
   }
   float thr = 0.3 - 0.6 * A.y;
-  float ew = st == 3 ? 0.09 : 0.05;
+  float ew = st == 3 ? 0.05 : 0.04;
   float fil = 0.0;
   if (st == 3) {                                         // streaks break up the edge
     vec3 ws = q * f * 7.0 - s2;
@@ -226,11 +234,14 @@ vec3 provinceShape(vec4 A, vec4 B, vec4 Cq, float salt, vec3 p, float R, float t
   }
   float mask = sstep(thr - ew, thr + ew, v);
   float edge = exp(-sq((v - thr) / (ew * 3.0)));
+  fil *= sstep(thr - 4.0 * ew, thr, v);                  // streaks only inside and just around the province
+  gPv = vec4(v, thr, ew, 1.0);
   if (st == 2) {                                         // broad soft glow laced with filaments
     float r1 = ridged(w * 2.3 + 3.0, 5, 2.1, 0.55), r2 = ridged(w * 5.5 - 7.0, 4, 2.1, 0.5);
     float core = sstep(thr - 0.22, thr + 0.22, v);
     fil = (sstep(0.52, 0.8, r1) * 0.9 + sstep(0.55, 0.85, r2) * 0.6) * core;
     mask = core;
+    gPv = vec4(v, thr, 0.22, 1.0);
   }
   return vec3(mask, fil, edge);
 }

@@ -298,11 +298,12 @@
       // 2) height maps, streamed
       const e16 = $('mH16').checked ? new E.PNGStream(W, Hh, 1, 16) : null, e8 = $('mH8').checked ? new E.PNGStream(W, Hh, 1, 8) : null;
       const eS = world.P.ocean && e16 ? new E.PNGStream(W, Hh, 1, 16) : null;   // Blender-friendly: sea surface flat
+      const dith = {};
       if (e16 || e8) {
         await E.streamMap(world, 'height', W, Hh, opts, [async (rows, y0, h) => {
           if (hs !== 1) for (let i = 0; i < rows.length; i++) rows[i] *= hs;
           if (e16) await e16.addRows(E.heightTo16(rows, mn, mx), h);
-          if (e8) await e8.addRows(E.heightTo8(rows, mn, mx, true), h);
+          if (e8) await e8.addRows(E.heightTo8(rows, mn, mx, true, W, dith), h);
           if (eS) await eS.addRows(E.heightTo16(rows.map((v) => Math.max(v, 0)), mn, mx), h);
         }], pct('Height maps'));
         if (e16) { fn.height16 = `${name}_height16.png`; await add(fn.height16, await e16.finish()); }
@@ -321,11 +322,13 @@
         if (!check) return;
         const enc = new E.PNGStream(W, Hh, channels, 8);
         await E.streamMap(world, layer, W, Hh, { ...opts, ...o2 }, [async (rows, y0, h) => {
-          await enc.addRows(channels === 3 ? E.rgbaToRGB(rows) : channels === 1 ? E.channel(rows, 0) : (() => { const n = rows.length / 4, o = new Uint8Array(n * 2); for (let i = 0; i < n; i++) { o[i * 2] = rows[i * 4]; o[i * 2 + 1] = rows[i * 4 + 3]; } return o; })(), h);
+          await enc.addRows(channels === 4 ? rows : channels === 3 ? E.rgbaToRGB(rows) : channels === 1 ? E.channel(rows, 0) : (() => { const n = rows.length / 4, o = new Uint8Array(n * 2); for (let i = 0; i < n; i++) { o[i * 2] = rows[i * 4]; o[i * 2 + 1] = rows[i * 4 + 3]; } return o; })(), h);
         }], pct(label));
         fn[key] = `${name}_${suffix}.png`; await add(fn[key], await enc.finish());
       };
       await simple($('mNormal').checked, 'normal', 'normal', 'normal', 'Normals', 3, { normalStrength: (+$('exNorm').value || 1) * hs * (world.R / 1000) / radiusKm, flatSea: world.P.ocean });
+      await simple($('mNormalKsp').checked, 'normal', 'normalKsp', 'normal_ksp_dxt5nm', 'KSP normals', 4, { normalStrength: (+$('exNorm').value || 1) * hs * (world.R / 1000) / radiusKm, flatSea: world.P.ocean, swizzle: true });
+      await simple($('mKspColor').checked, 'kspcolor', 'kspColor', 'color_ksp', 'KSP colour', 3, { aoStrength: +$('exBake').value });
       await simple($('mEmit').checked && world.P.emissive, 'emission', 'emission', 'emission', 'Emission', 3);
       await simple($('mRough').checked, 'roughness', 'roughness', 'roughness', 'Roughness', 1);
       await simple($('mAO').checked, 'ao', 'ao', 'ao', 'Ambient occlusion', 1, { aoStrength: 1 });

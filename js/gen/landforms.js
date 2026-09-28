@@ -40,6 +40,7 @@ uniform float uGrooveAmp, uGrooveScale, uGrooveCover, uGroovePatch;
 uniform float uChaosAmp, uChaosCover, uChaosScale;
 uniform float uTessAmp, uTessCover, uWrinkle, uShieldDens, uShieldAmp;
 uniform float uPateraDens, uPateraAmp, uMtnAmp, uMtnCover;
+uniform float uPlains, uPvDunes;
 uniform float uDunes, uTerrace, uMare, uMareLevel, uLavaLevel, uLavaCracks;
 uniform float uCapH, uCapLat;
 uniform float uScarpAmp, uScarpScale, uScarpLip, uRubble;
@@ -59,6 +60,14 @@ float provinces(vec3 p) {
 // thresholded province value (>0 highland) from the low-resolution province map
 float provAt(vec3 p) { return sampleDir(uProv, p).r; }
 float fracMaskAt(vec3 p) { return mix(1.0, 1.0 - sstep(-uTrans, uTrans, provAt(p)), uFracLow); }
+// flooded plains are never flat: buried relief shows through as ghost craters and swells, plus low
+// undulations and a fine flow texture
+float plains(vec3 p, float buried, float salt) {
+  if (uPlains <= 0.0) return 0.0;
+  float fP = fr(40.0);
+  return 0.2 * min(uPlains / 250.0, 1.5) * max(buried, -2500.0)
+       + uPlains * (2.0 * fbm(p * fr(500.0) + SO * 1.9 + salt, 3) + 1.4 * erodedFbm(p * fP - SO + salt, octaves(fP, uTex), 2.0, 0.55, 1.0));
+}
 float azimuth(vec3 p, vec3 c) { vec3 e = eastOf(c), n = cross(c, e); vec3 v = p - c; return atan(dot(v, n), dot(v, e)); }
 
 #ifdef USE_CRATERS
@@ -109,7 +118,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
     float h; vec4 m = vec4(0.0);
     float e = provinces(p) - uThr;
     float hi = sstep(-uTrans, uTrans, e + 0.05 * fbm(p * fr(80.0) + SO, 3));
-    h = mix(uLowH, uHighH, hi) + uBaseAmp * fbm(p * 3.0 - SO, 4);
+    h = mix(uLowH, uHighH, hi) + uBaseAmp * (0.8 * fbm(p * 1.2 + SO * 0.7, 3) + fbm(p * 3.0 - SO, 7, 2.0, 0.52));   // swells at every scale: no flat plateaus
     if (uRiftBelt > 0.0) {                       // chasmata and stepped scarps along the highland edge
       float x = (e - uTrans * 1.2) / (uTrans * 0.6);
       float belt = exp(-x * x);
@@ -127,6 +136,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       vec3 pv = provinceAt(i, p, uR, uTex, SO);
       if (pv.x + pv.z <= 0.001) continue;
       vec4 B = uPv1[i];
+      h += uPv3[i].x * pv.x;                   // raised plateaus or sunken basins, so colour and relief agree
       float fD = fr(uPv0[i].z * 0.02);
       int oc = octaves(fD, uTex);
       float det;
@@ -216,7 +226,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
           if (h < level) {
             float k = sstep(0.0, 80.0, level - h) * sstep(1.02, 0.88, d + 0.04 * snoise(p * fr(150.0)));
             float wr = pow(1.0 - abs(snoise(p * fr(70.0) + SO + float(i))), 10.0) * 150.0;
-            h = mix(h, level + wr, k);
+            h = mix(h, level + wr + plains(p, h - level, float(i)), k);
             m.g = max(m.g, k);
           }
         }
@@ -239,7 +249,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       if (h < level && region > 0.0) {
         float k = region * sstep(0.0, 150.0, level - h);
         float wr = pow(1.0 - abs(snoise(p * fr(90.0) + SO)), 8.0) * 120.0;
-        h = mix(h, level + wr, k);
+        h = mix(h, level + wr + plains(p, h - level, 0.0), k);
         m.g = max(m.g, k);
       } }
 ` },
@@ -556,6 +566,21 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       h += uMicro * 0.6 * (tu.x + 0.5 * tu.y);
     }
 ` },
+    pvDunes: { on: (U) => U.uPvDunes > 0, code: String.raw`
+    for (int i = 0; i < L(3); i++) {             // dune seas filling great provinces (Titan's equatorial sand seas)
+      if (uPv3[i].y <= 0.0) continue;
+      vec3 pv = provinceAt(i, p, uR, uTex, SO);
+      if (pv.x < 0.005) continue;
+      vec3 e = eastOf(p), q = p - e * dot(p, e) * 0.85;            // wind-aligned: stretched east-west
+      float lat = asin(clamp(p.y, -1.0, 1.0));
+      float sp = 3000.0 / uR;                                       // longitudinal dunes ~3 km apart
+      float ph = lat / sp * 6.2832 + 5.0 * fbm(q * fr(80.0) + SO, 3);
+      float crest = pow(1.0 - abs(sin(ph * 0.5)), 3.0) * sstep(2.5, 5.0, sp / uTex);
+      float fF = fr(30.0);                                          // dune-field texture seen from orbit
+      float field = 0.5 + 0.5 * fbm(q * fF - SO * 2.0, octaves(fF, uTex), 2.1, 0.55);
+      h += uPv3[i].y * pv.x * (0.7 * crest * sstep(0.25, 0.6, field) + 0.8 * field - 0.4);
+    }
+` },
     dunes: { on: (U) => U.uDunes > 0, code: String.raw`
     { float fd = fr(2.5);                       // transverse dunes in low, flat, sandy ground
       vec3 wd = normalize(eastOf(p) + 0.3 * northOf(p) * snoise(p * 4.0));
@@ -606,7 +631,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
 
   // Passes: feature groups sharing one small shader. Heavy features get a pass of their own.
   const STAGE0 = [['base', 'montes', 'rubble'], ['provinces'], ['scarps'], ['tesserae', 'shields', 'blocks'], ['oldCraters'], ['list0', 'mare', 'wrinkle']];
-  const STAGE1 = [['texture'], ['lanes'], ['lineaeNet'], ['eqRidge', 'dimples'], ['craters'], ['list1'], ['flows', 'cracks'], ['grooves', 'chaos', 'canyonNet'], ['paterae'], ['dunes', 'terraces', 'lava', 'caps']];
+  const STAGE1 = [['texture'], ['lanes'], ['lineaeNet'], ['eqRidge', 'dimples'], ['craters'], ['list1'], ['flows', 'cracks'], ['grooves', 'chaos', 'canyonNet'], ['paterae'], ['dunes', 'pvDunes', 'terraces', 'lava', 'caps']];
 
   function passSource(names) {
     const defs = [...new Set(names.map((n) => BLOCKS[n].def).filter(Boolean))].map((d) => `#define ${d} 1`).join('\n');
@@ -661,8 +686,8 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
 
   // great-province layers (shared with the colour stage)
   function provinceUniforms(P) {
-    const a = new Float32Array(12), b = new Float32Array(12), c = new Float32Array(12);
-    let on = false;
+    const a = new Float32Array(12), b = new Float32Array(12), c = new Float32Array(12), d = new Float32Array(12);
+    let on = false, dunes = 0;
     for (let k = 0; k < 3; k++) {
       const g = (x, d = 0) => (P['pv' + (k + 1) + x] ?? d);
       const st = +g('Style');
@@ -670,8 +695,10 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       a.set([st, +g('Cover', 0.3), +g('Size', 1500), +g('Jag', 1)], k * 4);
       b.set([+g('Detail'), +g('EdgeDetail'), +g('Stretch'), +g('Seed', k + 1)], k * 4);
       c.set([+g('LatC'), +g('LatW', 30), +g('LatBias'), +g('Variety', 0.6)], k * 4);
+      d.set([+g('Relief'), st > 0 ? +g('Dunes') : 0, +g('Follow'), 0], k * 4);
+      if (st > 0 && +g('Dunes') > 0) dunes = 1;
     }
-    return { uPv0: a, uPv1: b, uPv2: c, pvOn: on };
+    return { uPv0: a, uPv1: b, uPv2: c, uPv3: d, pvOn: on, uPvDunes: dunes };
   }
   S.provinceUniforms = provinceUniforms;
 
@@ -701,7 +728,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       uChaosAmp: n(P.chaos), uChaosCover: n(P.chaosCover, 0.15), uChaosScale: n(P.chaosBlock, 30),
       uTessAmp: n(P.tesserae), uTessCover: n(P.tesseraeCover, 0.15), uWrinkle: n(P.wrinkleRidges), uShieldDens: n(P.shieldFields), uShieldAmp: n(P.shieldHeight, 800),
       uPateraDens: n(P.paterae) / 200, uPateraAmp: n(P.pateraDepth, 800), uMtnAmp: n(P.blockMountains), uMtnCover: n(P.blockCover, 0.08),
-      uDunes: n(P.dunes), uTerrace: n(P.terraces), uMare: n(P.maria), uMareLevel: n(P.mareLevel, -1500),
+      uDunes: n(P.dunes), uTerrace: n(P.terraces), uMare: n(P.maria), uPlains: n(P.plainsRelief, 350), uMareLevel: n(P.mareLevel, -1500),
       uLavaLevel: P.lavaSea ? n(P.lavaLevel, -500) : -1e9, uLavaCracks: n(P.lavaCracks),
       uScarpAmp: n(P.scarps), uScarpScale: n(P.scarpScale, 600), uScarpLip: n(P.scarpLip, 0.3), uRubble: n(P.rubble), uMicro: n(P.microRelief), uUnitScale: n(P.unitScale, 250), uJag: n(P.edgeJag, 1), uFurrow: n(P.furrows), uPalimp: n(P.palimpsests), uPateraFlows: n(P.pateraFlows), uSecondYoung: n(P.youngSecondary),
       uEqRidge: n(P.eqRidge), uEqWidth: n(P.eqRidgeWidth, 80), uEqTilt: n(P.eqTilt), uEqCover: n(P.eqRidgeCover, 0.8), uEqBand: n(P.eqBand), uEqBandW: n(P.eqBandWidth, 250), uEqBandCh: Math.round(n(P.eqBandMaterial)),

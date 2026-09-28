@@ -50,6 +50,12 @@ edge brightness and wind stretch. **Latitude bias** pulls a layer towards a band
 are set separately), e.g. Mars's dark southern belt or Venus's bright equatorial belt. Negative bias keeps it away from that band.
 **Variety** varies how strong each patch is.
 
+Provinces are more than paint:
+- **Relief** raises the province into a plateau or sinks it into a basin, so its colour boundary is also a real slope.
+- **Dune seas** fill it with wind-aligned dunes.
+- **Follow terrain** lets its material collect in hollows and basins and pull back from crests and cliffs.
+  Its boundary then snakes along the relief instead of cutting across it like a stencil.
+
 ### Equatorial ridges, painted canyons and pits
 These are in the **Fractures & ice** section.
 - **Equatorial ridge** (like Iapetus): a segmented mountain ridge around a great circle.
@@ -58,6 +64,10 @@ These are in the **Fractures & ice** section.
 - **Canyon band:** streaks the canyon floor and walls with a bright, dark or secondary deposit. The band reaches
   beyond the rims, so it looks painted on while still following the real relief.
 - **Dimples:** fields of rimmed pits (Callisto and Triton style knobby, pitted ground).
+
+### Flooded plains
+Maria, lava plains and ice basins are never perfectly flat. **Relief kept on flooded plains** (in the Craters section)
+lets buried craters show through as ghost rings, and adds low swells and a fine flow texture.
 
 ### Node editor (remix and recolour)
 Press **◈ Nodes** in the bar under the globe. A Blender-style panel opens under the preview.
@@ -154,11 +164,31 @@ All maps are **equirectangular (2:1)**. Column 0 is 180° W and the top row is t
 The seam and the poles are artefact-free because everything is simulated on a cube-sphere.
 
 ### KSP / Kopernicus
+In KSP a planet looks different from Selene's preview. From far away KSP draws a textured sphere (colour + normal map);
+closer in it builds real terrain from the **height map** and paints it with the colour map **per vertex**. That terrain is
+much coarser than the maps, so fine detail blurs, and any noise in the height map shows up as bumps everywhere.
+
+For the best result:
+- Use the **16-bit** height map if your Kopernicus reads it. The 8-bit map is error-diffused, so it has no terraces and
+  much less noise than before, but it is still only 256 levels.
+- **Never block-compress the height map** (DXT1/DXT5/BC). Keep it PNG, or an uncompressed / L8 DDS.
+  Compression artefacts turn into bumps all over the terrain.
+- Normal maps: tick **Normal map, KSP layout (DXT5nm)** and convert that file as plain DXT5. Alternatively, convert the
+  normal `*_normal.png` with your tool's *normal map / DXT5nm* mode. Converting the plain normal map as ordinary
+  DXT1/DXT5 makes KSP read the wrong channels, and ridges turn into dark grooves.
+- Tick **KSP colour (baked relief)**. It bakes soft, non-directional shading (dark hollows, lit crests) into the colour
+  map, so craters and ridges stay readable under KSP's flat lighting. The cfg uses it automatically.
+
 - Set **In-game radius** and press **auto** next to *Height scale*. Relief then scales with the planet, e.g. Mars-sized relief on a 600 km body.
   Or pick your own height scale.
 - `offset` and `deformity` in the generated cfg already match the exported height map.
 - Selene exports PNG only. Convert to DDS with your own tool if you want. KSP expects DDS textures flipped vertically.
 - *Longitude offset* rolls the maps if you need a feature at a particular longitude.
+
+| KSP file | Use |
+|---|---|
+| `*_color_ksp.png` | Colour with baked relief shading (ScaledVersion texture and VertexColorMap) |
+| `*_normal_ksp_dxt5nm.png` | Normal map in Unity's DXT5nm layout (x in alpha, y in green) |
 
 ### Blender
 Put `*_blender_import.py` next to the maps, open it in the Scripting workspace and run it.

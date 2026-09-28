@@ -10,7 +10,7 @@
   const EQ = String.raw`//#include planet
 uniform sampler2DArray uSrc, uHt, uMat;
 uniform int uW, uHH, uX0, uY0, uMode;
-uniform float uLon0, uR, uNormalK, uSea, uFlatSea, uEmissive, uAoK, uCloudCover, uCloudScale, uLights, uSeed, uHmin, uHmax;
+uniform float uSwz, uLon0, uR, uNormalK, uSea, uFlatSea, uEmissive, uAoK, uCloudCover, uCloudScale, uLights, uSeed, uHmin, uHmax;
 out vec4 o;
 float hAt(vec3 d) { float h = sampleDirCubic(uHt, d); return uFlatSea > 0.5 ? max(h, uSea) : h; }
 void main() {
@@ -27,7 +27,9 @@ void main() {
     float hE = hAt(normalize(d + e * de)), hW = hAt(normalize(d - e * de));
     float hN = hAt(normalize(d + n * dlat)), hS = hAt(normalize(d - n * dlat));
     vec2 g = vec2((hE - hW) / (2.0 * de * uR), (hN - hS) / (2.0 * dlat * uR));
-    o = vec4(normalize(vec3(-g * uNormalK, 1.0)) * 0.5 + 0.5, 1.0); return;
+    vec3 nn = normalize(vec3(-g * uNormalK, 1.0)) * 0.5 + 0.5;
+    // uSwz: Unity/KSP "DXT5nm" layout — x in alpha, y in green (red and blue copy y)
+    o = uSwz > 0.5 ? vec4(nn.y, nn.y, nn.y, nn.x) : vec4(nn, 1.0); return;
   }
   if (uMode == 3) {        // roughness: rock rough, ice/frost smoother, liquid water and molten lava glossy
     vec4 alb = sampleDir(uSrc, d);
@@ -52,6 +54,26 @@ void main() {
       occ += ring / 8.0 * w; wsum += w;
     }
     o = vec4(1.0 - sat(occ / wsum * 1.6)); return;
+  }
+  if (uMode == 7) {        // colour with baked, non-directional relief shading: occlusion in hollows, lit crests
+    vec4 alb = sampleDir(uSrc, d);
+    float h = hAt(d), occ = 0.0, wsum = 0.0, ringMean = 0.0;
+    float r0 = max(dlat, texelAngle(textureSize(uHt, 0).x));
+    for (int k = 0; k < L(5); k++) {
+      float r = r0 * pow(2.0, float(k)), ring = 0.0, hm = 0.0;
+      for (int j = 0; j < L(8); j++) {
+        float a = float(j) * 0.785398 + float(k) * 0.4;
+        float hq = hAt(normalize(d + (e * cos(a) + n * sin(a)) * r));
+        ring += atan(max(0.0, hq - h) * 12.0 / (r * uR)); hm += hq;
+      }
+      float w = 1.0 / (1.0 + float(k));
+      occ += ring / 8.0 * w; wsum += w;
+      if (k == 1) ringMean = hm / 8.0;
+    }
+    float ao = 1.0 - sat(occ / wsum * 1.6);
+    float cav = clamp((h - ringMean) / max(1.0, (uHmax - uHmin) * 0.006), -1.5, 1.5);
+    vec3 c = alb.rgb * mix(1.0, ao, 0.75 * uAoK) * (1.0 + 0.16 * uAoK * cav);
+    o = vec4(sat3(c), alb.a); return;
   }
   if (uMode == 5) {        // cloud layer: large swirls stretched into zonal bands, cellular fine texture
     vec3 so = seedOff(uSeed + 61.0);
@@ -87,7 +109,7 @@ void main() {
   o = vec4(linearToSrgb(col * sat(lum)), 1.0);
 }`;
 
-  const MODES = { height: 0, albedo: 1, emission: 1, normal: 2, roughness: 3, ao: 4, clouds: 5, lights: 6 };
+  const MODES = { height: 0, albedo: 1, emission: 1, normal: 2, roughness: 3, ao: 4, clouds: 5, lights: 6, kspcolor: 7 };
 
   // Render rows [y0, y0+h) of a map, tiling horizontally. Returns Float32Array (height) or Uint8Array RGBA.
   function renderRows(world, layer, W, Hh, y0, h, opts, cache) {
@@ -101,7 +123,7 @@ void main() {
     }
     const out = float ? new Float32Array(W * h) : new Uint8Array(W * h * 4);
     const U = {
-      uSrc: layer === 'emission' ? world.emission : world.albedo, uHt: world.H, uMat: world.M || world.H, uW: W, uHH: Hh, uMode: mode,
+      uSrc: layer === 'emission' ? world.emission : world.albedo, uHt: world.H, uMat: world.M || world.H, uW: W, uHH: Hh, uMode: mode, uSwz: opts.swizzle ? 1 : 0,
       uLon0: (opts.lonShift || 0) * Math.PI / 180, uR: world.R, uNormalK: opts.normalStrength ?? 1, uSea: world.P.ocean ? 0 : -1e9,
       uFlatSea: opts.flatSea ? 1 : 0, uEmissive: world.P.emissive ? 1 : 0, uAoK: opts.aoStrength ?? 1, uCloudCover: opts.cloudCover ?? 0.5,
       uCloudScale: opts.cloudScale ?? 4, uLights: opts.lights ?? 0.5, uSeed: (world.ctx.seed % 997) + 0.5, uHmin: world.ctx.hmin, uHmax: world.ctx.hmax, uY0: y0,
@@ -244,8 +266,28 @@ void main() {
   }
   // 8-bit with triangular dither: breaks up terracing when Kopernicus interpolates the map
   let dseed = 12345;
-  function heightTo8(hf, mn, mx, dither = true) {
+  // 8-bit height. With the map width, uses serpentine Floyd–Steinberg error diffusion (state carries the
+  // error into the next strip): local averages stay exact, so there are no contour terraces and far less
+  // bumpy noise than random dithering (KSP builds terrain straight from these values).
+  function heightTo8(hf, mn, mx, dither = true, W = 0, state = null) {
     const out = new Uint8Array(hf.length), s = 255 / Math.max(1e-6, mx - mn);
+    if (dither && W > 0) {
+      const H = hf.length / W, st = state || {};
+      let cur = st.next && st.next.length === W ? st.next : new Float32Array(W), nxt = new Float32Array(W);
+      for (let y = 0; y < H; y++) {
+        const rev = ((st.row || 0) + y) & 1;
+        for (let k = 0; k < W; k++) {
+          const x = rev ? W - 1 - k : k, dx = rev ? -1 : 1, i = y * W + x;
+          const v = (hf[i] - mn) * s + cur[x], q = Math.max(0, Math.min(255, Math.round(v))), e = v - q;
+          out[i] = q;
+          const xn = (x + dx + W) % W, xp = (x - dx + W) % W;   // wraps around the seam
+          cur[xn] += e * 7 / 16; nxt[xp] += e * 3 / 16; nxt[x] += e * 5 / 16; nxt[xn] += e / 16;
+        }
+        cur = nxt; nxt = new Float32Array(W);
+      }
+      st.next = cur; st.row = (st.row || 0) + H;
+      return out;
+    }
     const r = () => { dseed = (Math.imul(dseed, 1664525) + 1013904223) >>> 0; return dseed / 4294967296; };
     for (let i = 0; i < hf.length; i++) out[i] = Math.max(0, Math.min(255, Math.round((hf[i] - mn) * s + (dither ? r() - r() : 0))));
     return out;

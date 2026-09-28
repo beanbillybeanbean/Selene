@@ -122,7 +122,11 @@ print("Selene: built", NAME)
 // KSP expects DDS textures flipped vertically — most converters have an option for it).
 //
 // Height map: 16-bit is smoothest if your Kopernicus version reads 16-bit PNG heightmaps;
-// otherwise use the dithered 8-bit map. deformity = full height range, offset = lowest point.
+// otherwise use the 8-bit map (error-diffused, so no terracing). deformity = full height range,
+// offset = lowest point. Do NOT convert the height map to DXT/BC — block compression adds
+// bumps everywhere; keep it PNG or an uncompressed/L8 DDS.
+// Normals: *_normal_ksp_dxt5nm.png is already in Unity's DXT5nm layout (convert as plain DXT5).
+// The plain *_normal.png must be converted with your tool's normal-map / DXT5nm option instead.
 @Kopernicus:AFTER[Kopernicus]
 {
     Body
@@ -154,7 +158,7 @@ print("Selene: built", NAME)
             Material
             {
                 texture = ${dir}/${f.kspColor || f.color}
-                normals = ${dir}/${f.normal || ''}
+                normals = ${dir}/${f.normalKsp || f.normal || ''}
             }
         }
         PQS
@@ -172,7 +176,7 @@ print("Selene: built", NAME)
                 }
                 VertexColorMap
                 {
-                    map = ${dir}/${f.color}
+                    map = ${dir}/${f.kspColor || f.color}
                     order = 9999993
                     enabled = true
                 }
