@@ -258,8 +258,7 @@
     const N = world ? world.N : +$('res').value;
     sel.innerHTML = '';
     for (const w of [1024, 2048, 4096, 8192, 16384]) {
-      if (w > Math.min(16384, N * 8)) continue;
-      if (w === 16384 && N < 2048) continue;
+      if (w > Math.min(16384, N * 16)) continue;
       sel.add(new Option(`${w} × ${w / 2}${w > N * 4 ? ' (upsampled)' : ''}`, w));
     }
     sel.value = cur && [...sel.options].some((o) => +o.value === cur) ? cur : Math.min(8192, N * 4);
@@ -278,37 +277,47 @@
       const files = [], fn = {};
       const opts = { lonShift: lon };
       const add = async (nm, blob) => { files.push({ name: nm, blob }); };
-      // height
-      ep('Resampling height…');
-      let hf = await E.equirect(world, 'height', W, Hh, opts, (f) => ep(`Height ${Math.round(f * 100)}%`));
-      if (hs !== 1) for (let i = 0; i < hf.length; i++) hf[i] *= hs;
-      const mm = E.minMax(hf);
-      if ($('mH16').checked) { ep('Encoding 16-bit height…'); fn.height16 = `${name}_height16.png`; await add(fn.height16, await E.encodePNG(E.heightTo16(hf, mm.min, mm.max), W, Hh, 1, 16)); }
-      if ($('mH8').checked) { ep('Encoding 8-bit height…'); fn.height8 = `${name}_height8.png`; await add(fn.height8, await E.encodePNG(E.heightTo8(hf, mm.min, mm.max, true), W, Hh, 1, 8)); }
-      if (world.P.ocean && $('mH16').checked) { // Blender-friendly version with the ocean surface flat at sea level
-        const hs2 = hf.map((v) => Math.max(v, 0));
-        fn.heightSurface16 = `${name}_surface16.png`;
-        await add(fn.heightSurface16, await E.encodePNG(E.heightTo16(hs2, mm.min, mm.max), W, Hh, 1, 16));
+      const pct = (label) => (f) => ep(`${label} ${Math.round(f * 100)}%`);
+      // 1) exact height range of the exported map
+      let mn = Infinity, mx = -Infinity;
+      await E.streamMap(world, 'height', W, Hh, opts, [async (rows) => { for (let i = 0; i < rows.length; i++) { const v = rows[i] * hs; if (v < mn) mn = v; if (v > mx) mx = v; } }], pct('Measuring heights'));
+      const mm = { min: mn, max: mx };
+      // 2) height maps, streamed
+      const e16 = $('mH16').checked ? new E.PNGStream(W, Hh, 1, 16) : null, e8 = $('mH8').checked ? new E.PNGStream(W, Hh, 1, 8) : null;
+      const eS = world.P.ocean && e16 ? new E.PNGStream(W, Hh, 1, 16) : null;   // Blender-friendly: sea surface flat
+      if (e16 || e8) {
+        await E.streamMap(world, 'height', W, Hh, opts, [async (rows, y0, h) => {
+          if (hs !== 1) for (let i = 0; i < rows.length; i++) rows[i] *= hs;
+          if (e16) await e16.addRows(E.heightTo16(rows, mn, mx), h);
+          if (e8) await e8.addRows(E.heightTo8(rows, mn, mx, true), h);
+          if (eS) await eS.addRows(E.heightTo16(rows.map((v) => Math.max(v, 0)), mn, mx), h);
+        }], pct('Height maps'));
+        if (e16) { fn.height16 = `${name}_height16.png`; await add(fn.height16, await e16.finish()); }
+        if (e8) { fn.height8 = `${name}_height8.png`; await add(fn.height8, await e8.finish()); }
+        if (eS) { fn.heightSurface16 = `${name}_surface16.png`; await add(fn.heightSurface16, await eS.finish()); }
       }
-      hf = null;
-      // colour
+      // 3) colour + ocean mask
       if ($('mColor').checked || $('mSpec').checked) {
-        ep('Resampling colour…');
-        const alb = await E.equirect(world, 'albedo', W, Hh, opts, (f) => ep(`Colour ${Math.round(f * 100)}%`));
-        if ($('mColor').checked) { ep('Encoding colour…'); fn.color = `${name}_color.png`; await add(fn.color, await E.encodePNG(E.rgbaToRGB(alb), W, Hh, 3, 8)); }
-        if ($('mSpec').checked) { fn.spec = `${name}_specular.png`; await add(fn.spec, await E.encodePNG(E.channel(alb, 3), W, Hh, 1, 8)); }
+        const eC = $('mColor').checked ? new E.PNGStream(W, Hh, 3, 8) : null, eP = $('mSpec').checked ? new E.PNGStream(W, Hh, 1, 8) : null;
+        await E.streamMap(world, 'albedo', W, Hh, opts, [async (rows, y0, h) => { if (eC) await eC.addRows(E.rgbaToRGB(rows), h); if (eP) await eP.addRows(E.channel(rows, 3), h); }], pct('Colour'));
+        if (eC) { fn.color = `${name}_color.png`; await add(fn.color, await eC.finish()); }
+        if (eP) { fn.spec = `${name}_specular.png`; await add(fn.spec, await eP.finish()); }
       }
-      if ($('mNormal').checked) {
-        ep('Computing normal map…');
-        const k = (+$('exNorm').value || 1) * hs * (world.R / 1000) / radiusKm;
-        const nrm = await E.equirect(world, 'normal', W, Hh, { ...opts, normalStrength: k, flatSea: world.P.ocean }, (f) => ep(`Normals ${Math.round(f * 100)}%`));
-        fn.normal = `${name}_normal.png`; await add(fn.normal, await E.encodePNG(E.rgbaToRGB(nrm), W, Hh, 3, 8));
-      }
-      if ($('mEmit').checked && world.P.emissive) {
-        ep('Resampling emission…');
-        const em = await E.equirect(world, 'emission', W, Hh, opts);
-        fn.emission = `${name}_emission.png`; await add(fn.emission, await E.encodePNG(E.rgbaToRGB(em), W, Hh, 3, 8));
-      }
+      // 4) other maps
+      const simple = async (check, layer, key, suffix, label, channels, o2 = {}) => {
+        if (!check) return;
+        const enc = new E.PNGStream(W, Hh, channels, 8);
+        await E.streamMap(world, layer, W, Hh, { ...opts, ...o2 }, [async (rows, y0, h) => {
+          await enc.addRows(channels === 3 ? E.rgbaToRGB(rows) : channels === 1 ? E.channel(rows, 0) : (() => { const n = rows.length / 4, o = new Uint8Array(n * 2); for (let i = 0; i < n; i++) { o[i * 2] = rows[i * 4]; o[i * 2 + 1] = rows[i * 4 + 3]; } return o; })(), h);
+        }], pct(label));
+        fn[key] = `${name}_${suffix}.png`; await add(fn[key], await enc.finish());
+      };
+      await simple($('mNormal').checked, 'normal', 'normal', 'normal', 'Normals', 3, { normalStrength: (+$('exNorm').value || 1) * hs * (world.R / 1000) / radiusKm, flatSea: world.P.ocean });
+      await simple($('mEmit').checked && world.P.emissive, 'emission', 'emission', 'emission', 'Emission', 3);
+      await simple($('mRough').checked, 'roughness', 'roughness', 'roughness', 'Roughness', 1);
+      await simple($('mAO').checked, 'ao', 'ao', 'ao', 'Ambient occlusion', 1, { aoStrength: 1 });
+      await simple($('mClouds').checked, 'clouds', 'clouds', 'clouds', 'Clouds', 2, { cloudCover: +$('exCloud').value, cloudScale: 4 });
+      await simple($('mLights').checked, 'lights', 'lights', 'night_lights', 'Night lights', 3, { lights: +$('exLights').value });
       const info = { name, files: fn, hmin: mm.min, hmax: mm.max, radiusKm, ocean: !!world.P.ocean, emissive: !!world.P.emissive };
       if ($('mKsp').checked) await add(`${name}_Kopernicus.cfg`, new Blob([S.Integrations.kopernicusCfg(info)], { type: 'text/plain' }));
       if ($('mBlender').checked) await add(`${name}_blender_import.py`, new Blob([S.Integrations.blenderScript(info)], { type: 'text/plain' }));
@@ -360,6 +369,17 @@
     });
     $('nodesBtn').onclick = () => toggleNodes();
     $('paintBtn').onclick = () => togglePaint();
+    $('refFile').onchange = async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      try {
+        const im = new Image(); im.src = URL.createObjectURL(f); await im.decode();
+        preview.setReference(im); preview.split = 0.5;
+        document.querySelector('.refbtn').classList.add('on'); $('refOff').hidden = false;
+        if (Math.abs(im.width / im.height - 2) > 0.05) progress('Tip: the reference should be a 2:1 equirectangular map', 0);
+      } catch (err) { showError(err); }
+      e.target.value = '';
+    };
+    $('refOff').onclick = () => { preview.setReference(null); document.querySelector('.refbtn').classList.remove('on'); $('refOff').hidden = true; };
     document.querySelectorAll('#paintPanel .pp-tools button').forEach((b) => b.onclick = () => {
       document.querySelectorAll('#paintPanel .pp-tools button').forEach((x) => x.classList.toggle('on', x === b));
       if (!paintTool) return;

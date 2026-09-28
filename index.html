@@ -37,6 +37,8 @@
       <label>Relief ×<input id="exag" type="range" min="0" max="40" step="0.5" value="6"></label>
       <label>Sun<input id="sun" type="range" min="-3.14" max="3.14" step="0.01" value="-1.75"></label>
       <label><input id="spin" type="checkbox" checked> Rotate</label>
+      <label class="refbtn" title="Load a real planet map (2:1 equirectangular) to compare side by side. Drag the gold line to move the split.">◧ Reference<input id="refFile" type="file" accept="image/*" hidden></label>
+      <button id="refOff" title="Hide the reference" hidden>✕</button>
       <button id="paintBtn" title="Paint masks, sculpt, and place craters, volcanoes and canyons on the globe">✎ Paint</button>
       <button id="nodesBtn" title="Open the node editor to remix and recolour the planet">◈ Nodes</button>
     </div>
@@ -80,6 +82,10 @@
       <label><input type="checkbox" id="mNormal" checked> Normal map (OpenGL)</label>
       <label><input type="checkbox" id="mSpec"> Specular / ocean mask</label>
       <label><input type="checkbox" id="mEmit" checked> Emission (lava worlds)</label>
+      <label><input type="checkbox" id="mRough"> Roughness</label>
+      <label><input type="checkbox" id="mAO"> Ambient occlusion</label>
+      <label><input type="checkbox" id="mClouds"> Cloud layer <input id="exCloud" type="number" min="0" max="1" step="0.05" value="0.5" title="Cloud coverage 0–1" class="mini"></label>
+      <label><input type="checkbox" id="mLights"> Night lights <input id="exLights" type="number" min="0" max="1" step="0.05" value="0.5" title="Settlement density 0–1" class="mini"></label>
       <label><input type="checkbox" id="mKsp" checked> Kopernicus config</label>
       <label><input type="checkbox" id="mBlender" checked> Blender import script</label>
     </fieldset>

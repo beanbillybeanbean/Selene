@@ -93,8 +93,11 @@ if nrm:
     nm = nt.nodes.new("ShaderNodeNormalMap"); nm.location = (-300, -100); nm.uv_map = "UVMap"; nm.inputs["Strength"].default_value = 1.0
     nt.links.new(tn.outputs["Color"], nm.inputs["Color"]); nt.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
 bsdf.inputs["Roughness"].default_value = 0.92
+rough = img(${JSON.stringify(f.roughness || '')}, False)
+if rough:
+    nt.links.new(image_node(rough, -600, 60).outputs["Color"], bsdf.inputs["Roughness"])
 spec = img(${JSON.stringify(f.spec || '')}, False)
-if spec:
+if spec and not rough:
     sn = image_node(spec, -900, 0)
     mr = nt.nodes.new("ShaderNodeMapRange"); mr.location = (-300, 100)
     mr.inputs["To Min"].default_value = 0.92; mr.inputs["To Max"].default_value = 0.08

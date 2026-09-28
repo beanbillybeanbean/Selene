@@ -7,6 +7,7 @@
   const FS = String.raw`
 uniform sampler2DArray uAlb, uH, uEm, uPaintL;
 uniform float uShowPaint, uCurR; uniform vec3 uCurD;
+uniform sampler2D uRef; uniform float uRefOn, uSplit;
 uniform mat3 uRot;
 uniform vec2 uRes;
 uniform float uDist, uExag, uR, uHmin, uHmax, uHasEm, uLit, uZoom, uSea, uAmbient;
@@ -57,6 +58,10 @@ vec3 layerColor(vec3 d, float scale) {
   return srgbToLinear(sampleDir(uEm, d).rgb);
 }
 
+vec3 refAt(vec3 d) {             // reference image is an equirectangular map (column 0 = 180°W, top = north)
+  vec2 ll = dirLatLon(d);
+  return srgbToLinear(texture(uRef, vec2(fract((ll.y + PI) / TAU), 0.5 - ll.x / PI)).rgb);
+}
 // paint-mode overlay: masks tinted red/green/blue, brush outline
 vec3 overlay(vec3 c, vec3 d) {
   if (uShowPaint < 0.5) return c;
@@ -81,6 +86,11 @@ void main() {
     float pixAng = (uDist - 1.0) / uRes.y / max(0.2, -dot(normalize(hit), rd));
     float scale = clamp(pixAng / texelAngle(N), 1.0, 8.0);
     vec3 col = uLayer == 1 ? shade(d, scale) : layerColor(d, scale);
+    if (uRefOn > 0.5 && fc.x > uSplit * uRes.x) {
+      vec3 rc = refAt(d);
+      if (uLayer == 1) { float mu = max(dot(d, uSun), 0.0); col = rc * (mu * 1.25 + uAmbient); } else col = rc;
+    }
+    if (uRefOn > 0.5 && abs(fc.x - uSplit * uRes.x) < 1.5) { o = vec4(1.0, 0.8, 0.45, 1.0); return; }
     o = vec4(overlay(uLayer == 1 ? tonemap(col) : linearToSrgb(col), d), 1.0);
   } else {
     float sc = min(uRes.x * 0.5, uRes.y);              // keep the map 2:1 whatever the panel shape
@@ -89,6 +99,8 @@ void main() {
     float lon = fract(uv.x) * TAU - PI, lat = (uv.y - 0.5) * PI;
     vec3 d = latLonDir(lat, lon);
     vec3 col = layerColor(d, 1.0);
+    if (uRefOn > 0.5 && fc.x > uSplit * uRes.x) col = refAt(d);
+    if (uRefOn > 0.5 && abs(fc.x - uSplit * uRes.x) < 1.5) { o = vec4(1.0, 0.8, 0.45, 1.0); return; }
     o = vec4(overlay(uLayer == 1 ? tonemap(col) : linearToSrgb(col), d), 1.0);
   }
 }`;
@@ -106,6 +118,22 @@ void main() {
       this.dirty = true;
     }
     setWorld(w) { this.world = w; this.dirty = true; }
+    setReference(img) {
+      const gl = this.gpu.gl;
+      if (this.refTex) { gl.deleteTexture(this.refTex); this.refTex = null; }
+      if (img) {
+        const t = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        this.refTex = t;
+      }
+      this.dirty = true;
+    }
     _bindInput(cv) {
       let drag = null;
       let tooling = false;
@@ -114,17 +142,22 @@ void main() {
         this.spin = false;
         cv.setPointerCapture(e.pointerId);
         if (this.tool && e.button === 0 && !e.shiftKey) { tooling = true; this.tool.down(this.pick(e.clientX, e.clientY), e); return; }
+        if (this.refTex) {                      // grabbing the split line moves it
+          const r = cv.getBoundingClientRect(), sx = (e.clientX - r.left) / r.width;
+          if (Math.abs(sx - (this.split ?? 0.5)) < 0.015) { this.splitDrag = true; return; }
+        }
         drag = { x: e.clientX, y: e.clientY, yaw: this.yaw, pitch: this.pitch, pan: [...this.pan] };
       });
       cv.addEventListener('pointermove', (e) => {
         if (this.tool) { const d = this.pick(e.clientX, e.clientY); this.cursor = d; this.dirty = true; if (tooling) this.tool.move(d, e); }
+        if (this.splitDrag) { const r = cv.getBoundingClientRect(); this.split = Math.max(0.02, Math.min(0.98, (e.clientX - r.left) / r.width)); this.dirty = true; return; }
         if (!drag) return;
         const dx = (e.clientX - drag.x) / cv.clientHeight, dy = (e.clientY - drag.y) / cv.clientHeight;
         if (this.view === 0) { const k = (this.dist - 1) * 0.9; this.yaw = drag.yaw - dx * k * 2; this.pitch = Math.max(-1.5, Math.min(1.5, drag.pitch + dy * k * 2)); }
         else { this.pan = [drag.pan[0] - dx / this.zoom * cv.clientHeight / cv.clientWidth, Math.max(-0.5, Math.min(0.5, drag.pan[1] + dy / this.zoom))]; }
         this.dirty = true;
       });
-      cv.addEventListener('pointerup', (e) => { if (tooling) { tooling = false; this.tool.up(this.pick(e.clientX, e.clientY), e); } drag = null; });
+      cv.addEventListener('pointerup', (e) => { if (tooling) { tooling = false; this.tool.up(this.pick(e.clientX, e.clientY), e); } drag = null; this.splitDrag = false; });
       cv.addEventListener('pointerleave', () => { if (this.tool) { this.cursor = null; this.dirty = true; } });
       cv.addEventListener('wheel', (e) => {
         e.preventDefault();
@@ -181,6 +214,7 @@ void main() {
         uAlb: W.albedo, uH: W.H, uEm: W.emission || W.albedo, uHasEm: W.P.emissive ? 1 : 0,
         uRot: rot, uRes: [w, h], uDist: this.dist, uExag: this.exag, uR: W.R, uHmin: W.ctx.hmin, uHmax: W.ctx.hmax,
         uPaintL: W.paint || W.albedo, uShowPaint: this.tool && W.paint ? 1 : 0, uCurD: this.cursor || [0, 1, 0], uCurR: this.tool && this.cursor ? this.tool.radius() : 0,
+        uRef: this.refTex || undefined, uRefOn: this.refTex ? 1 : 0, uSplit: this.split ?? 0.5,
         uLit: 1, uZoom: this.zoom, uPan: this.pan, uSun: sw, uView: this.view, uLayer: this.layer, uSea: 0, uAmbient: 0.015,
       });
     }

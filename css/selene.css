@@ -138,3 +138,9 @@ aside { background: var(--panel); overflow-y: auto; padding: 10px 12px; }
 .pp-row button { flex: 1; font-size: 11px; }
 .pp-hint { margin: 0; font-size: 10.5px; color: #6f7a90; line-height: 1.4; }
 #view.painting { cursor: crosshair; }
+
+#export fieldset input.mini { width: 52px; margin-left: auto; padding: 1px 4px; font-size: 11px; }
+
+.refbtn { cursor: pointer; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; background: var(--panel2); color: var(--text) !important; }
+.refbtn.on { background: #3a2c18; border-color: #7a5a30; color: var(--accent2) !important; }
+#top button { white-space: nowrap; }

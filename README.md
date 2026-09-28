@@ -27,6 +27,8 @@ Everything runs on your GPU in the browser. There is nothing to install.
 | High | 1024² | 4096 × 2048 | ~10 s |
 | Ultra | 2048² | 8192 × 4096 | ~30–60 s |
 
+Exports can go up to **16384 × 8192** from any resolution. They are rendered in tiles and streamed into the PNG encoder, so they don't need the whole map in memory.
+
 \*On a mid-range desktop GPU. Worlds with erosion (Mars, Earth) take longer.
 
 ### Node editor (remix and recolour)
@@ -65,6 +67,10 @@ Changes re-apply in about a second, without regenerating the planet.
 - **Examples** loads ready-made graphs, and **Tidy** re-arranges the boxes.
 - The graph is kept when you switch world type, saved with **Save settings**, and
   applied to exports.
+
+### Comparing with a real planet
+Press **◧ Reference** and load a real 2:1 map (e.g. a NASA Mars mosaic). The view splits in two: your planet on the
+left and the reference on the right, on the globe or the flat map. Drag the gold line to move the split, and press ✕ to close it.
 
 ### Your own presets
 Press **★ Save preset** next to the World type menu and give it a name. It stores everything:
@@ -108,6 +114,10 @@ resolution. It is also included in exports.
 | `*_normal.png` | Tangent-space normal map (OpenGL / +Y north) |
 | `*_emission.png` | Glowing lava, for lava worlds and Io |
 | `*_specular.png` | Ocean mask (Earth-like worlds) |
+| `*_roughness.png` | Roughness for PBR shading (rock rough, ice smoother, water/lava glossy) |
+| `*_ao.png` | Ambient occlusion from the terrain |
+| `*_clouds.png` | Cloud layer (grey + alpha), coverage set next to the checkbox |
+| `*_night_lights.png` | City lights on habitable lowlands and coasts, density set next to the checkbox |
 | `*_Kopernicus.cfg` | Starting-point Kopernicus body config (VertexHeightMap `offset`/`deformity` filled in) |
 | `*_blender_import.py` | Blender script that builds a displaced, fully textured planet |
 | `*_info.txt`, `*_settings.json` | Height range, and the exact settings to regenerate the same planet |
