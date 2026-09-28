@@ -90,10 +90,11 @@
   function scheduleRebuild() { clearTimeout(rebuildT); rebuildT = setTimeout(buildPanel, 400); }
 
   function setPreset(id) {
-    const keepSeed = P ? P.seed : 'selene', keepRes = P ? P.resolution : 512, keepNodes = P ? P.nodes : null;
+    const keepSeed = P ? P.seed : 'selene', keepRes = P ? P.resolution : 512, keepNodes = P ? P.nodes : null, keepPaint = P ? P.paint : null;
     P = S.preset(id);
     P.seed = keepSeed; P.resolution = keepRes;
-    P.nodes = keepNodes || S.Nodes.defaultGraph();         // the node graph survives switching world type
+    P.nodes = keepNodes || S.Nodes.defaultGraph();         // node graph and painting survive switching world type
+    P.paint = keepPaint || [];
     if (editor) editor.render();
     $('seed').value = P.seed;
     $('res').value = P.resolution;
@@ -128,6 +129,47 @@
     const w = world; if (!w) return;
     const nodesOn = w.H !== w.baseH ? ' · node graph applied' : '';
     $('stats').innerHTML = `${S.PRESETS[P.preset] ? S.PRESETS[P.preset].name : ''} · seed “${P.seed}”${nodesOn}<br>relief ${(w.ctx.hmin / 1000).toFixed(1)} … ${(w.ctx.hmax / 1000).toFixed(1)} km on a ${(w.R / 1000).toFixed(0)} km world<br>${w.N}² × 6 cube faces · GPU memory ${gpu.memoryMB().toFixed(0)} MB`;
+  }
+
+  // ------------------------------------------------------------------ painting
+  let paintTool = null, paintT = 0, paintBusy = false;
+  function paintRefresh(final) {
+    if (!world) return;
+    if (final) world.paintVersion = (world.paintVersion || 0) + 1;
+    preview.dirty = true;
+    clearTimeout(paintT);
+    paintT = setTimeout(async () => {
+      if (paintBusy) { paintRefresh(false); return; }
+      paintBusy = true; preview.busy = true;
+      try { world.P.paint = P.paint; await S.Nodes.apply(world, P.nodes); updateStats(); } catch (e) { showError(e); }
+      paintBusy = false; preview.busy = false; preview.dirty = true;
+    }, final ? 30 : 220);
+  }
+  function togglePaint(open) {
+    const panel = $('paintPanel');
+    open = open ?? panel.hidden;
+    if (open && !world) { progress('Generate a planet first, then paint on it', 0); return; }
+    panel.hidden = !open;
+    $('paintBtn').classList.toggle('on', open);
+    $('view').classList.toggle('painting', open);
+    if (!paintTool) paintTool = new S.Paint.PaintTool({ world: () => world, P: () => P, refresh: paintRefresh });
+    preview.tool = open ? paintTool : null;
+    if (open) { preview.spin = false; $('spin').checked = false; }
+    preview.dirty = true;
+    updatePaintUI();
+  }
+  function updatePaintUI() {
+    if (!paintTool) return;
+    const m = paintTool.mode, feat = m === 'crater' || m === 'volcano' || m === 'canyon';
+    document.querySelectorAll('#paintPanel .pp-brush').forEach((e) => (e.style.display = feat ? 'none' : ''));
+    document.querySelectorAll('#paintPanel .pp-feat').forEach((e) => (e.style.display = feat ? '' : 'none'));
+    document.querySelectorAll('#paintPanel label').forEach((l) => { const i = l.querySelector('input'); l.querySelector('span').textContent = i.value; });
+    const hint = {
+      mask: 'Paint a mask, then use it in the node editor: Painted node → Paint (colour) or any “Where” input.',
+      erase: 'Erases all three masks.', raise: 'Drag to build up terrain (Alt/Ctrl lowers).', lower: 'Drag to dig down.',
+      crater: 'Click to place a crater with a real crater shape. Height/depth 2000 = natural depth.', volcano: 'Click to place a shield volcano.', canyon: 'Drag from one end of the canyon to the other.',
+    }[m];
+    document.querySelector('#paintPanel .pp-hint').textContent = hint + ' Shift+drag or right-drag rotates the view.';
   }
 
   // ------------------------------------------------------------------ node editor
@@ -260,6 +302,28 @@
       preview.view = +b.dataset.v; preview.dirty = true;
     });
     $('nodesBtn').onclick = () => toggleNodes();
+    $('paintBtn').onclick = () => togglePaint();
+    document.querySelectorAll('#paintPanel .pp-tools button').forEach((b) => b.onclick = () => {
+      document.querySelectorAll('#paintPanel .pp-tools button').forEach((x) => x.classList.toggle('on', x === b));
+      if (!paintTool) return;
+      paintTool.mode = b.dataset.m; paintTool.ch = +(b.dataset.ch || 0);
+      updatePaintUI();
+    });
+    for (const [id, k] of [['ppSize', 'size'], ['ppStr', 'strength'], ['ppFSize', 'featSize'], ['ppFDep', 'featDepth']]) $(id).oninput = () => { if (paintTool) paintTool[k] = +$(id).value; updatePaintUI(); };
+    $('ppHard').oninput = () => { if (paintTool) paintTool.hard = 1 - +$('ppHard').value; updatePaintUI(); };
+    const repaint = async () => {
+      if (!world) return;
+      if (world.paint) { world.ctx.gpu.free(world.paint); world.paint = null; }
+      await S.Paint.replay(world, P.paint);
+      if (!world.paint) S.Paint.ensureLayer(world);
+      paintRefresh(true);
+    };
+    $('ppUndo').onclick = async () => {
+      const ops = P.paint || []; if (!ops.length) return;
+      ops.pop(); while (ops.length && !ops[ops.length - 1].end) ops.pop();
+      await repaint();
+    };
+    $('ppClear').onclick = async () => { if (!confirm('Remove all painting, sculpting and placed features?')) return; P.paint = []; await repaint(); };
     { // resizable node panel
       const h = $('npResize');
       h.addEventListener('pointerdown', (e) => {

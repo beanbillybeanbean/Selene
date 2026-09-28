@@ -5,7 +5,8 @@
   const S = (window.Selene = window.Selene || {});
 
   const FS = String.raw`
-uniform sampler2DArray uAlb, uH, uEm;
+uniform sampler2DArray uAlb, uH, uEm, uPaintL;
+uniform float uShowPaint, uCurR; uniform vec3 uCurD;
 uniform mat3 uRot;
 uniform vec2 uRes;
 uniform float uDist, uExag, uR, uHmin, uHmax, uHasEm, uLit, uZoom, uSea, uAmbient;
@@ -56,6 +57,16 @@ vec3 layerColor(vec3 d, float scale) {
   return srgbToLinear(sampleDir(uEm, d).rgb);
 }
 
+// paint-mode overlay: masks tinted red/green/blue, brush outline
+vec3 overlay(vec3 c, vec3 d) {
+  if (uShowPaint < 0.5) return c;
+  vec4 pm = clamp(sampleDir(uPaintL, d), 0.0, 1.0);
+  c = mix(c, vec3(1.0, 0.25, 0.2), pm.r * 0.45);
+  c = mix(c, vec3(0.3, 1.0, 0.35), pm.g * 0.45);
+  c = mix(c, vec3(0.3, 0.5, 1.0), pm.b * 0.45);
+  if (uCurR > 0.0) { float a = gcDist(d, uCurD) / uCurR; c = mix(c, vec3(1.0, 0.85, 0.5), 0.9 * exp(-sq((a - 1.0) * 30.0))); }
+  return c;
+}
 void main() {
   vec2 fc = gl_FragCoord.xy;
   if (uView == 0) {
@@ -70,7 +81,7 @@ void main() {
     float pixAng = (uDist - 1.0) / uRes.y / max(0.2, -dot(normalize(hit), rd));
     float scale = clamp(pixAng / texelAngle(N), 1.0, 8.0);
     vec3 col = uLayer == 1 ? shade(d, scale) : layerColor(d, scale);
-    o = vec4(uLayer == 1 ? tonemap(col) : linearToSrgb(col), 1.0);
+    o = vec4(overlay(uLayer == 1 ? tonemap(col) : linearToSrgb(col), d), 1.0);
   } else {
     float sc = min(uRes.x * 0.5, uRes.y);              // keep the map 2:1 whatever the panel shape
     vec2 uv = vec2((fc.x - 0.5 * uRes.x) / (2.0 * sc), (fc.y - 0.5 * uRes.y) / sc) / uZoom + uPan + 0.5;
@@ -78,7 +89,7 @@ void main() {
     float lon = fract(uv.x) * TAU - PI, lat = (uv.y - 0.5) * PI;
     vec3 d = latLonDir(lat, lon);
     vec3 col = layerColor(d, 1.0);
-    o = vec4(uLayer == 1 ? tonemap(col) : linearToSrgb(col), 1.0);
+    o = vec4(overlay(uLayer == 1 ? tonemap(col) : linearToSrgb(col), d), 1.0);
   }
 }`;
 
@@ -97,15 +108,24 @@ void main() {
     setWorld(w) { this.world = w; this.dirty = true; }
     _bindInput(cv) {
       let drag = null;
-      cv.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, yaw: this.yaw, pitch: this.pitch, pan: [...this.pan] }; cv.setPointerCapture(e.pointerId); this.spin = false; });
+      let tooling = false;
+      cv.addEventListener('contextmenu', (e) => { if (this.tool) e.preventDefault(); });
+      cv.addEventListener('pointerdown', (e) => {
+        this.spin = false;
+        cv.setPointerCapture(e.pointerId);
+        if (this.tool && e.button === 0 && !e.shiftKey) { tooling = true; this.tool.down(this.pick(e.clientX, e.clientY), e); return; }
+        drag = { x: e.clientX, y: e.clientY, yaw: this.yaw, pitch: this.pitch, pan: [...this.pan] };
+      });
       cv.addEventListener('pointermove', (e) => {
+        if (this.tool) { const d = this.pick(e.clientX, e.clientY); this.cursor = d; this.dirty = true; if (tooling) this.tool.move(d, e); }
         if (!drag) return;
         const dx = (e.clientX - drag.x) / cv.clientHeight, dy = (e.clientY - drag.y) / cv.clientHeight;
         if (this.view === 0) { const k = (this.dist - 1) * 0.9; this.yaw = drag.yaw - dx * k * 2; this.pitch = Math.max(-1.5, Math.min(1.5, drag.pitch + dy * k * 2)); }
         else { this.pan = [drag.pan[0] - dx / this.zoom * cv.clientHeight / cv.clientWidth, Math.max(-0.5, Math.min(0.5, drag.pan[1] + dy / this.zoom))]; }
         this.dirty = true;
       });
-      cv.addEventListener('pointerup', () => { drag = null; });
+      cv.addEventListener('pointerup', (e) => { if (tooling) { tooling = false; this.tool.up(this.pick(e.clientX, e.clientY), e); } drag = null; });
+      cv.addEventListener('pointerleave', () => { if (this.tool) { this.cursor = null; this.dirty = true; } });
       cv.addEventListener('wheel', (e) => {
         e.preventDefault();
         const k = Math.exp(e.deltaY * 0.0012);
@@ -113,6 +133,31 @@ void main() {
         else this.zoom = Math.max(1, Math.min(64, this.zoom / k));
         this.dirty = true;
       }, { passive: false });
+    }
+    // screen point -> unit direction on the planet (or null)
+    pick(cx, cy) {
+      const cv = this.gpu.canvas, r = cv.getBoundingClientRect();
+      if (!this.res || !this.R3) return null;
+      const [w, h] = this.res;
+      const fx = (cx - r.left) / r.width * w, fy = (1 - (cy - r.top) / r.height) * h;
+      let d;
+      if (this.view === 0) {
+        const nx = (fx / w * 2 - 1) * (w / h), ny = fy / h * 2 - 1;
+        let rd = [nx * 0.5, ny * 0.5, -1]; const l = Math.hypot(...rd); rd = rd.map((x) => x / l);
+        const ro = [0, 0, this.dist];
+        const b = ro[2] * rd[2], c = ro[2] * ro[2] - 1, disc = b * b - c;
+        if (disc < 0) return null;
+        const t = -b - Math.sqrt(disc), hit = [ro[0] + rd[0] * t, ro[1] + rd[1] * t, ro[2] + rd[2] * t];
+        const R = this.R3;
+        d = [0, 1, 2].map((i) => R[i][0] * hit[0] + R[i][1] * hit[1] + R[i][2] * hit[2]);
+      } else {
+        const sc = Math.min(w * 0.5, h);
+        const u = (fx - 0.5 * w) / (2 * sc) / this.zoom + this.pan[0] + 0.5, v = (fy - 0.5 * h) / sc / this.zoom + this.pan[1] + 0.5;
+        if (v < 0 || v > 1) return null;
+        const lon = (u - Math.floor(u)) * 2 * Math.PI - Math.PI, lat = (v - 0.5) * Math.PI;
+        d = [Math.cos(lat) * Math.cos(lon), Math.sin(lat), -Math.cos(lat) * Math.sin(lon)];
+      }
+      const l = Math.hypot(...d); return d.map((x) => x / l);
     }
     frame() {
       const gpu = this.gpu, cv = gpu.canvas, gl = gpu.gl;
@@ -128,12 +173,14 @@ void main() {
       // world = Ry(yaw) · Rx(-pitch) · camera   (row-major here, uploaded column-major)
       const R = [[cy, sy * sp, sy * cp], [0, cp, -sp], [-sy, cy * sp, cy * cp]];
       const rot = [R[0][0], R[1][0], R[2][0], R[0][1], R[1][1], R[2][1], R[0][2], R[1][2], R[2][2]];
+      this.R3 = R; this.res = [w, h];
       const sun = [Math.cos(this.sunEl) * Math.sin(this.sunAz), Math.sin(this.sunEl), Math.cos(this.sunEl) * Math.cos(this.sunAz)];
       // the sun is fixed relative to the camera so the terminator stays in view while you orbit
       const sw = [0, 1, 2].map((k) => R[k][0] * sun[0] + R[k][1] * sun[1] + R[k][2] * sun[2]);
       gpu.draw2D(this.prog, null, {
         uAlb: W.albedo, uH: W.H, uEm: W.emission || W.albedo, uHasEm: W.P.emissive ? 1 : 0,
         uRot: rot, uRes: [w, h], uDist: this.dist, uExag: this.exag, uR: W.R, uHmin: W.ctx.hmin, uHmax: W.ctx.hmax,
+        uPaintL: W.paint || W.albedo, uShowPaint: this.tool && W.paint ? 1 : 0, uCurD: this.cursor || [0, 1, 0], uCurR: this.tool && this.cursor ? this.tool.radius() : 0,
         uLit: 1, uZoom: this.zoom, uPan: this.pan, uSun: sw, uView: this.view, uLayer: this.layer, uSea: 0, uAmbient: 0.015,
       });
     }

@@ -35,9 +35,30 @@
       <label>Relief ×<input id="exag" type="range" min="0" max="40" step="0.5" value="6"></label>
       <label>Sun<input id="sun" type="range" min="-3.14" max="3.14" step="0.01" value="-1.75"></label>
       <label><input id="spin" type="checkbox" checked> Rotate</label>
+      <button id="paintBtn" title="Paint masks, sculpt, and place craters, volcanoes and canyons on the globe">✎ Paint</button>
       <button id="nodesBtn" title="Open the node editor to remix and recolour the planet">◈ Nodes</button>
     </div>
     <div id="stats"></div>
+    <div id="paintPanel" hidden>
+      <div class="pp-tools">
+        <button data-m="mask" data-ch="0" class="on"><i style="background:#ff4a3a"></i>Mask 1</button>
+        <button data-m="mask" data-ch="1"><i style="background:#4ce85a"></i>Mask 2</button>
+        <button data-m="mask" data-ch="2"><i style="background:#4f86ff"></i>Mask 3</button>
+        <button data-m="erase">Erase masks</button>
+        <button data-m="raise">Raise</button>
+        <button data-m="lower">Lower</button>
+        <button data-m="crater">Crater</button>
+        <button data-m="volcano">Volcano</button>
+        <button data-m="canyon">Canyon</button>
+      </div>
+      <label class="pp-brush">Brush size (km) <input id="ppSize" type="range" min="5" max="2000" step="5" value="150"><span></span></label>
+      <label class="pp-brush">Strength <input id="ppStr" type="range" min="0.02" max="1" step="0.01" value="0.35"><span></span></label>
+      <label class="pp-brush">Softness <input id="ppHard" type="range" min="0" max="1" step="0.01" value="0.6"><span></span></label>
+      <label class="pp-feat">Feature size (km) <input id="ppFSize" type="range" min="5" max="2000" step="5" value="120"><span></span></label>
+      <label class="pp-feat">Height / depth (m) <input id="ppFDep" type="range" min="100" max="20000" step="50" value="2000"><span></span></label>
+      <div class="pp-row"><button id="ppUndo">Undo stroke</button><button id="ppClear">Clear all paint</button></div>
+      <p class="pp-hint"></p>
+    </div>
     <div id="nodePanel" hidden><div id="npResize" title="Drag to resize"></div><div id="npBody"></div></div>
     <div id="empty">Choose a world type and press <b>Generate</b>.<br><small>Drag to rotate · scroll to zoom · Map view shows exactly what gets exported.</small></div>
   </section>
@@ -85,6 +106,7 @@
 <script src="js/export/export.js"></script>
 <script src="js/export/integrations.js"></script>
 <script src="js/ui/preview.js"></script>
+<script src="js/ui/paint.js"></script>
 <script src="js/ui/nodeeditor.js"></script>
 <script src="js/ui/ui.js"></script>
 </body>

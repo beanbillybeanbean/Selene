@@ -66,6 +66,19 @@ Changes re-apply in about a second, without regenerating the planet.
 - The graph is kept when you switch world type, saved with **Save settings**, and
   applied to exports.
 
+### Painting on the globe
+Press **✎ Paint** (after generating). Pick a tool in the panel that appears, then drag on the globe or the map.
+- **Mask 1/2/3:** paint masks, shown tinted red, green and blue. Use them in the node editor with the **Painted** node:
+  connect a mask to a **Paint** node to colour it, or to any node's **Where** input to confine that feature.
+- **Raise / Lower:** sculpt the height. Alt or Ctrl while raising lowers instead.
+- **Crater / Volcano:** click to place one. The size and depth sliders apply; depth 2000 gives a crater its natural depth.
+- **Canyon:** drag from one end of the canyon to the other.
+- **Undo stroke** and **Clear all paint** do what they say.
+- **Rotating:** Shift+drag or right-drag rotates the view while painting.
+
+Everything you paint is saved with your settings and replayed when you regenerate, even at a different
+resolution. It is also included in exports.
+
 ### If something goes wrong
 - **The first generation of each world type is slower.** Its shaders are compiled then, and on
   Windows that can take a little while. The progress bar shows *compiling shaders* during this step.

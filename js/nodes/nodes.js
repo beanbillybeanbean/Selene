@@ -186,6 +186,13 @@
       glsl: (n) => `{ vec3 pv = provinceShape(vec4(${n.sel.style}.0, ${n.P.cover}, ${n.P.size}, ${n.P.jag}), vec4(0.0, 0.0, ${n.P.stretch}, ${n.P.seed}), ${n.id}.0, p, uR, uTex, seedOff(uSeed + 91.0));
     ${n.O.mask} = pv.x; ${n.O.filaments} = pv.y; ${n.O.edge} = pv.z; }`,
     },
+    painted: {
+      title: 'Painted', hue: 300, desc: 'The masks you painted on the globe (✎ Paint).',
+      inputs: [],
+      outputs: [{ id: 'm1', label: 'Mask 1 (red)', kind: V }, { id: 'm2', label: 'Mask 2 (green)', kind: V }, { id: 'm3', label: 'Mask 3 (blue)', kind: V }, { id: 'edits', label: 'Height edits (m)', kind: V }],
+      params: [],
+      glsl: (n) => `{ vec4 pm = at(uPaint); ${n.O.m1} = sat(pm.r); ${n.O.m2} = sat(pm.g); ${n.O.m3} = sat(pm.b); ${n.O.edits} = pm.a; }`,
+    },
     output: {
       title: 'Output', hue: 0, sat: 0, desc: 'What gets previewed and exported.',
       inputs: [{ id: 'height', label: 'Height', kind: V, def: 'baseH' }, { id: 'colour', label: 'Colour', kind: C, def: 'baseC' }],
@@ -194,12 +201,12 @@
       glsl: (n) => `outH = ${n.I.height}; outC = ${n.I.colour};`,
     },
   };
-  const ADDABLE = ['terrain', 'craters', 'fractures', 'plateaus', 'volcanoes', 'province', 'erosion', 'terrace', 'mask', 'math', 'curve', 'smooth', 'image', 'paint', 'world', 'output'];
+  const ADDABLE = ['terrain', 'craters', 'fractures', 'plateaus', 'volcanoes', 'province', 'erosion', 'terrace', 'mask', 'math', 'curve', 'smooth', 'image', 'painted', 'paint', 'world', 'output'];
 
   // ---------------------------------------------------------------- GLSL library for the heavier nodes
   const LIB = {
     common: String.raw`
-uniform sampler2DArray uBaseH, uBaseC, uBaseM;
+uniform sampler2DArray uBaseH, uBaseC, uBaseM, uPaint;
 uniform float uR, uTex, uHmin, uHmax, uSeed;
 layout(location = 0) out vec4 oH;
 layout(location = 1) out vec4 oC;
@@ -372,7 +379,7 @@ vec3 nodeVolcanoes(vec3 p, float dens, float sizeKm, float caldera, float reach,
 
   // Compiles the graph into stages. Nodes that need their input as a texture (blur, erosion) are
   // "barriers": their input is rendered first, processed on the GPU, and read back by later stages.
-  function compile(graph) {
+  function compile(graph, force) {
     const byId = new Map(graph.nodes.map((n) => [n.id, n]));
     const src = new Map();
     for (const l of graph.links) if (byId.has(l.from[0]) && byId.has(l.to[0])) src.set(l.to[0] + ':' + l.to[1], l.from);
@@ -380,7 +387,7 @@ vec3 nodeVolcanoes(vec3 p, float dens, float sizeKm, float caldera, float reach,
     if (!out) return { identity: true };
     const hs = src.get(out.id + ':height'), cs = src.get(out.id + ':colour');
     const isWorld = (s0, o) => !s0 || (byId.get(s0[0]).type === 'world' && s0[1] === o);
-    if (isWorld(hs, 'height') && isWorld(cs, 'colour')) return { identity: true };
+    if (!force && isWorld(hs, 'height') && isWorld(cs, 'colour')) return { identity: true };
     const kindOf = (s0) => DEFS[byId.get(s0[0]).type].outputs.find((o) => o.id === s0[1]).kind;
 
     // Emit one shader computing `roots` (array of [socket or null, default expr, kind]).
@@ -430,7 +437,7 @@ vec3 nodeVolcanoes(vec3 p, float dens, float sizeKm, float caldera, float reach,
       const fs = `//#include planet\n${LIB.common}\n${[...libs].map((l) => LIB[l]).join('\n')}\n${decl}
 void main() {
   vec3 p = cellDir();
-  float baseH = at(uBaseH).r;
+  float baseH = at(uBaseH).r + at(uPaint).a;      // sculpted height edits are part of the world
   vec4 bc = at(uBaseC);
   vec3 baseC = srgbToLinear(bc.rgb);
   vec4 baseM = at(uBaseM);
@@ -494,17 +501,20 @@ ${body}
 
   async function applyNow(world, graph) {
     const gpu = world.ctx.gpu, ops = world.ctx.ops, N = world.N;
-    const c = compile(graph || { nodes: [], links: [] });
+    const hasPaint = !!(world.paint && world.P.paint && world.P.paint.length);
+    let c = compile(graph || { nodes: [], links: [] }, hasPaint);
+    if (c.identity && hasPaint) c = compile(defaultGraph(), true);
     if (c.identity) { world.useBase(); return; }
     const base = {
       uBaseH: world.baseH, uBaseC: world.baseAlbedo, uBaseM: world.M || world.baseH,
-      uR: world.R, uTex: Math.PI / 2 / N, uHmin: world.baseHmin, uHmax: world.baseHmax, uSeed: (world.ctx.seed % 997) + 0.5,
+      uPaint: world.paint || undefined, uR: world.R, uTex: Math.PI / 2 / N, uHmin: world.baseHmin, uHmax: world.baseHmax, uSeed: (world.ctx.seed % 997) + 0.5,
     };
     const resolve = async (u) => { const r = {}; for (const k in u) r[k] = u[k] && u[k].nodeImage !== undefined ? await imageTexture(gpu, u[k].nodeImage) : u[k]; return r; };
     world.nodeCache = world.nodeCache || new Map();
     const used = new Set(), bar = {};
     const barUniforms = (ids) => { const r = {}; for (const id of ids) { const t = bar[id]; r['uBar' + id] = t.a; r['uBarB' + id] = t.b || t.a; r['uBarC' + id] = t.c || t.a; } return r; };
     for (const st of c.stages) {
+      st.cacheKey += '|pv' + (world.paintVersion || 0);   // painted height feeds barrier inputs
       let entry = world.nodeCache.get(st.cacheKey);
       if (!entry) {
         const prog = await gpu.programAsync(st.key, st.fs);

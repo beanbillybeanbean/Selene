@@ -11,7 +11,8 @@
     useBase() { this.H = this.baseH; this.albedo = this.baseAlbedo; this.ctx.hmin = this.baseHmin; this.ctx.hmax = this.baseHmax; }
     dispose() {
       this.disposed = true;
-      for (const k of ['H', 'T', 'A', 'M', 'clim', 'albedo', 'emission', 'baseH', 'baseAlbedo', 'nodeH', 'nodeC']) if (this[k]) this.ctx.gpu.free(this[k]);
+      if (this.nodeCache) for (const e of this.nodeCache.values()) for (const t of [e.a, e.b, e.c]) if (t) this.ctx.gpu.free(t);
+      for (const k of ['H', 'T', 'A', 'M', 'clim', 'albedo', 'emission', 'baseH', 'baseAlbedo', 'nodeH', 'nodeC', 'paint']) if (this[k]) this.ctx.gpu.free(this[k]);
     }
   }
 
@@ -45,7 +46,8 @@
     await gpu.sync();
     report('Done', 1);
     const w = new World(ctx, { H, T, A, M, clim, albedo, emission, baseH: H, baseAlbedo: albedo, baseHmin: ctx.hmin, baseHmax: ctx.hmax });
-    if (P.nodes && S.Nodes) { report('Applying node graph', 0.99); await S.Nodes.apply(w, P.nodes); }
+    if (P.paint && P.paint.length && S.Paint) { report('Replaying your painting', 0.985); await S.Paint.replay(w, P.paint); }
+    if ((P.nodes || (P.paint && P.paint.length)) && S.Nodes) { report('Applying node graph', 0.99); await S.Nodes.apply(w, P.nodes); }
     w.seconds = (performance.now() - t0) / 1000;
     return w;
   }
