@@ -17,7 +17,7 @@
   // ------------------------------------------------------------------ parameter panel
   const closed = new Set(['Tectonics', 'Erosion', 'Climate', 'Colouring', 'Palette']);
   function buildPanel() {
-    $('presetDesc').textContent = S.PRESETS[P.preset] ? S.PRESETS[P.preset].desc : '';
+    $('presetDesc').textContent = P.userPreset ? `Your preset “${P.userPreset}” (based on ${S.PRESETS[P.preset] ? S.PRESETS[P.preset].name : P.preset}).` : S.PRESETS[P.preset] ? S.PRESETS[P.preset].desc : '';
     const root = $('groups');
     root.innerHTML = '';
     const groups = new Map();
@@ -89,7 +89,62 @@
   let rebuildT = 0;
   function scheduleRebuild() { clearTimeout(rebuildT); rebuildT = setTimeout(buildPanel, 400); }
 
+  // ------------------------------------------------------------------ user presets (browser storage)
+  const UP_KEY = 'selene.userPresets';
+  function userPresets() { try { return JSON.parse(localStorage.getItem(UP_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function storeUserPresets(o) {
+    try { localStorage.setItem(UP_KEY, JSON.stringify(o)); return true; }
+    catch (e) { showError(new Error('Could not save the preset: the browser storage is full (images in Image nodes take a lot of space). Use “Save settings…” to save it as a file instead.')); return false; }
+  }
+  function fillPresetMenu(select) {
+    const sel = $('preset'); sel.innerHTML = '';
+    const g1 = document.createElement('optgroup'); g1.label = 'World types';
+    for (const [id, pr] of Object.entries(S.PRESETS)) g1.appendChild(new Option(pr.name, id));
+    sel.appendChild(g1);
+    const ups = Object.keys(userPresets()).sort((a, b) => a.localeCompare(b));
+    if (ups.length) { const g2 = document.createElement('optgroup'); g2.label = 'My presets'; for (const n of ups) g2.appendChild(new Option('★ ' + n, 'user:' + n)); sel.appendChild(g2); }
+    if (select) sel.value = select;
+    $('delPreset').hidden = !String(sel.value).startsWith('user:');
+  }
+  function saveUserPreset() {
+    const name = (prompt('Name for this preset:', P.userPreset || '') || '').trim();
+    if (!name) return;
+    const all = userPresets();
+    if (all[name] && !confirm(`Replace your preset “${name}”?`)) return;
+    P.seed = $('seed').value; P.resolution = +$('res').value;
+    const copy = JSON.parse(JSON.stringify({ ...P, userPreset: name }));
+    all[name] = copy;
+    if (!storeUserPresets(all)) return;
+    P.userPreset = name;
+    fillPresetMenu('user:' + name);
+    buildPanel();
+    progress(`Saved preset “${name}”`, 1);
+  }
+  function deleteUserPreset() {
+    const v = $('preset').value; if (!v.startsWith('user:')) return;
+    const name = v.slice(5);
+    if (!confirm(`Delete your preset “${name}”?`)) return;
+    const all = userPresets(); delete all[name]; storeUserPresets(all);
+    fillPresetMenu(P.preset);
+    delete P.userPreset;
+    buildPanel();
+  }
+
   function setPreset(id) {
+    if (String(id).startsWith('user:')) {
+      const u = userPresets()[id.slice(5)];
+      if (!u) return;
+      const base = S.preset(S.PRESETS[u.preset] ? u.preset : 'mars');
+      P = { ...base, ...JSON.parse(JSON.stringify(u)), colors: { ...base.colors, ...(u.colors || {}) } };
+      if (!P.nodes) P.nodes = S.Nodes.defaultGraph();
+      if (!P.paint) P.paint = [];
+      $('seed').value = P.seed; $('res').value = P.resolution;
+      $('delPreset').hidden = false;
+      if (editor) { editor.render(); editor.fit(); }
+      buildPanel();
+      return;
+    }
+    $('delPreset').hidden = true;
     const keepSeed = P ? P.seed : 'selene', keepRes = P ? P.resolution : 512, keepNodes = P ? P.nodes : null, keepPaint = P ? P.paint : null;
     P = S.preset(id);
     P.seed = keepSeed; P.resolution = keepRes;
@@ -128,7 +183,7 @@
   function updateStats() {
     const w = world; if (!w) return;
     const nodesOn = w.H !== w.baseH ? ' · node graph applied' : '';
-    $('stats').innerHTML = `${S.PRESETS[P.preset] ? S.PRESETS[P.preset].name : ''} · seed “${P.seed}”${nodesOn}<br>relief ${(w.ctx.hmin / 1000).toFixed(1)} … ${(w.ctx.hmax / 1000).toFixed(1)} km on a ${(w.R / 1000).toFixed(0)} km world<br>${w.N}² × 6 cube faces · GPU memory ${gpu.memoryMB().toFixed(0)} MB`;
+    $('stats').innerHTML = `${P.userPreset ? '★ ' + P.userPreset : S.PRESETS[P.preset] ? S.PRESETS[P.preset].name : ''} · seed “${P.seed}”${nodesOn}<br>relief ${(w.ctx.hmin / 1000).toFixed(1)} … ${(w.ctx.hmax / 1000).toFixed(1)} km on a ${(w.R / 1000).toFixed(0)} km world<br>${w.N}² × 6 cube faces · GPU memory ${gpu.memoryMB().toFixed(0)} MB`;
   }
 
   // ------------------------------------------------------------------ painting
@@ -285,12 +340,14 @@
       gpu.onLost = () => { preview.busy = true; showError(new Error('The GPU driver reset (WebGL context lost). Reload the page (F5) to continue. A lower resolution helps if it happens again.')); progress('GPU reset — reload the page', 0); };
     } catch (e) { showError(e); return; }
     S.WORLD_COLORS_USED = S.Surface.WORLD_COLORS;
-    for (const [id, pr] of Object.entries(S.PRESETS)) $('preset').add(new Option(pr.name, id));
+    fillPresetMenu();
     const resIt = S.SCHEMA.find((x) => x.key === 'resolution');
     for (const [v, t] of resIt.options) $('res').add(new Option(t, v));
     $('preset').value = 'mars';
     setPreset('mars');
     $('preset').onchange = () => setPreset($('preset').value);
+    $('savePreset').onclick = saveUserPreset;
+    $('delPreset').onclick = deleteUserPreset;
     $('dice').onclick = () => { $('seed').value = Math.random().toString(36).slice(2, 8); P.seed = $('seed').value; };
     $('res').onchange = () => { P.resolution = +$('res').value; fillWidths(); };
     $('gen').onclick = generate;

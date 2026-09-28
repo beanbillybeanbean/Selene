@@ -66,6 +66,15 @@ Changes re-apply in about a second, without regenerating the planet.
 - The graph is kept when you switch world type, saved with **Save settings**, and
   applied to exports.
 
+### Your own presets
+Press **★ Save preset** next to the World type menu and give it a name. It stores everything:
+- all settings and colours;
+- the seed;
+- the node graph and your painting.
+
+Your presets appear under **My presets** in the World type menu. **🗑** deletes the selected one.
+They live in your browser's storage. To move them to another computer, use **Save settings… / Load settings…**.
+
 ### Painting on the globe
 Press **✎ Paint** (after generating). Pick a tool in the panel that appears, then drag on the globe or the map.
 - **Mask 1/2/3:** paint masks, shown tinted red, green and blue. Use them in the node editor with the **Painted** node:
