@@ -72,7 +72,8 @@ void main() {
     vec3 col = uLayer == 1 ? shade(d, scale) : layerColor(d, scale);
     o = vec4(uLayer == 1 ? tonemap(col) : linearToSrgb(col), 1.0);
   } else {
-    vec2 uv = (fc / uRes - 0.5) / uZoom + uPan + 0.5;
+    float sc = min(uRes.x * 0.5, uRes.y);              // keep the map 2:1 whatever the panel shape
+    vec2 uv = vec2((fc.x - 0.5 * uRes.x) / (2.0 * sc), (fc.y - 0.5 * uRes.y) / sc) / uZoom + uPan + 0.5;
     if (uv.y < 0.0 || uv.y > 1.0) { o = vec4(vec3(0.012, 0.014, 0.02), 1.0); return; }
     float lon = fract(uv.x) * TAU - PI, lat = (uv.y - 0.5) * PI;
     vec3 d = latLonDir(lat, lon);

@@ -189,11 +189,13 @@ float ejectaBright(float d, float ang, float fresh, float seedf) {
 uniform vec4 uPv0[3];   // style, coverage 0..1, size km, edge raggedness
 uniform vec4 uPv1[3];   // interior detail m, edge detail m, wind stretch, seed
 // x = mask, y = filaments / streak texture, z = edge band
-vec3 provinceAt(int i, vec3 p, float R, float tex, vec3 so) {
-  vec4 A = uPv0[i], B = uPv1[i];
+vec3 provinceShape(vec4 A, vec4 B, float salt, vec3 p, float R, float tex, vec3 so);
+vec3 provinceAt(int i, vec3 p, float R, float tex, vec3 so) { return provinceShape(uPv0[i], uPv1[i], float(i), p, R, tex, so); }
+// A = (style, coverage, size km, raggedness), B = (unused, unused, wind stretch, seed)
+vec3 provinceShape(vec4 A, vec4 B, float salt, vec3 p, float R, float tex, vec3 so) {
   int st = int(A.x + 0.5);
   if (st == 0) return vec3(0.0);
-  vec3 s2 = so + seedOff(B.w * 13.0 + float(i) * 7.0 + 1.0);
+  vec3 s2 = so + seedOff(B.w * 13.0 + salt * 7.0 + 1.0);
   float f = R / (max(A.z, 1.0) * 1000.0);
   vec3 q = p;
   float stretch = st == 3 ? max(B.z, 0.5) : B.z;

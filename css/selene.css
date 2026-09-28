@@ -118,3 +118,8 @@ aside { background: var(--panel); overflow-y: auto; padding: 10px 12px; }
 .ne-param input[type=color] { width: 100%; height: 20px; }
 .ne-rng { display: grid; grid-template-columns: 1fr 58px; gap: 5px; align-items: center; }
 .ne-rng input[type=number] { width: 58px; }
+
+.ne-curve { width: 100%; height: 96px; background: #10131a; border: 1px solid #2c3342; border-radius: 4px; cursor: ns-resize; }
+.ne-curve-presets { display: flex; flex-wrap: wrap; gap: 3px; }
+.ne-curve-presets button { font-size: 10px; padding: 1px 5px; }
+.ne-img { height: 70px; border: 1px dashed #3a4356; border-radius: 4px; background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 11px; cursor: pointer; }

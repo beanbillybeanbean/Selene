@@ -47,6 +47,12 @@ Changes re-apply in about a second, without regenerating the planet.
   | Mask | Picks out a height band, latitude, random patches or a hemisphere |
   | Math | Adds, multiplies, mixes or combines two values |
   | Paint | Paints a colour where its mask is |
+  | Province | Planet-scale shapes: Venus-style bright filament belts, Mars-style dark streaky provinces, regions |
+  | Erosion | Runs real river erosion on its input; outputs eroded height, a river mask and how much was eroded |
+  | Terrace | Cuts terrain into steps and ledges |
+  | Curve | Remaps a value through a curve you drag (contrast, invert, levels) |
+  | Smooth / Sharpen | Blurs, sharpens or keeps only detail, at a radius in km |
+  | Image | Uses your own 2:1 image as a mask, heightmap or colour source |
 
 - **Chaining height:** each feature node takes a Height and gives back Height + its feature.
   Chain them like World → Craters → Fractures → Output.

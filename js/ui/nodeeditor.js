@@ -157,6 +157,60 @@
         const c = document.createElement('input'); c.type = 'color'; c.value = val;
         c.oninput = () => set(c.value, false);
         row.appendChild(c);
+      } else if (p.type === 'curve') {
+        row.innerHTML = `<label>${p.label} <small>(drag the points)</small></label>`;
+        const cv = document.createElement('canvas'); cv.width = 190; cv.height = 96; cv.className = 'ne-curve';
+        row.appendChild(cv);
+        const pts = (Array.isArray(val) ? val : p.value).slice();
+        const g = cv.getContext('2d');
+        const cr = (t) => { const x = t * 4, i = Math.min(3, Math.floor(x)), f = x - i, q = (k) => pts[Math.max(0, Math.min(4, k))];
+          const f2 = f * f, f3 = f2 * f;
+          return q(i - 1) * (-0.5 * f3 + f2 - 0.5 * f) + q(i) * (1.5 * f3 - 2.5 * f2 + 1) + q(i + 1) * (-1.5 * f3 + 2 * f2 + 0.5 * f) + q(i + 2) * (0.5 * f3 - 0.5 * f2); };
+        const X = (t) => 6 + t * (cv.width - 12), Y = (v) => cv.height - 6 - v * (cv.height - 12);
+        const draw = () => {
+          g.clearRect(0, 0, cv.width, cv.height);
+          g.strokeStyle = '#2c3342'; g.lineWidth = 1;
+          for (let k = 0; k <= 4; k++) { g.beginPath(); g.moveTo(X(k / 4), 4); g.lineTo(X(k / 4), cv.height - 4); g.stroke(); }
+          g.strokeStyle = '#8fd6c8'; g.lineWidth = 2; g.beginPath();
+          for (let k = 0; k <= 60; k++) { const t = k / 60, v = Math.max(-0.1, Math.min(1.1, cr(t))); k ? g.lineTo(X(t), Y(v)) : g.moveTo(X(t), Y(v)); }
+          g.stroke();
+          g.fillStyle = '#f0c27f';
+          pts.forEach((v, k) => { g.beginPath(); g.arc(X(k / 4), Y(v), 4, 0, 7); g.fill(); });
+        };
+        draw();
+        cv.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          const r = cv.getBoundingClientRect(), sx = cv.width / r.width;
+          const k = Math.max(0, Math.min(4, Math.round(((e.clientX - r.left) * sx - 6) / (cv.width - 12) * 4)));
+          cv.setPointerCapture(e.pointerId);
+          const mv = (ev) => { const y = ((ev.clientY - r.top) * (cv.height / r.height)); pts[k] = Math.max(0, Math.min(1, (cv.height - 6 - y) / (cv.height - 12))); draw(); set(pts.slice(), false); };
+          const up = () => { cv.removeEventListener('pointermove', mv); cv.removeEventListener('pointerup', up); };
+          cv.addEventListener('pointermove', mv); cv.addEventListener('pointerup', up); mv(e);
+        });
+        const presets = document.createElement('div'); presets.className = 'ne-curve-presets';
+        for (const [nm, v] of [['Linear', [0, 0.25, 0.5, 0.75, 1]], ['Invert', [1, 0.75, 0.5, 0.25, 0]], ['Contrast', [0, 0.1, 0.5, 0.9, 1]], ['Soft', [0, 0.4, 0.62, 0.8, 1]], ['Hard', [0, 0.05, 0.2, 0.5, 1]], ['Peak', [0, 0.6, 1, 0.6, 0]]]) {
+          const b = document.createElement('button'); b.textContent = nm;
+          b.onclick = () => { v.forEach((x, i) => (pts[i] = x)); draw(); set(pts.slice(), false); };
+          presets.appendChild(b);
+        }
+        row.appendChild(presets);
+      } else if (p.type === 'image') {
+        row.innerHTML = `<label>${p.label}</label>`;
+        const th = document.createElement('div'); th.className = 'ne-img';
+        const show = (u) => { th.style.backgroundImage = u ? `url(${u})` : ''; th.textContent = u ? '' : 'No image — click to load'; };
+        show(val);
+        const fi = document.createElement('input'); fi.type = 'file'; fi.accept = 'image/*'; fi.style.display = 'none';
+        th.onclick = () => fi.click();
+        fi.onchange = async () => {
+          const f = fi.files[0]; if (!f) return;
+          const im = new Image(); im.src = URL.createObjectURL(f); await im.decode();
+          const W = Math.min(2048, im.width), H = Math.round(W / 2);
+          const c = document.createElement('canvas'); c.width = W; c.height = H;
+          c.getContext('2d').drawImage(im, 0, 0, W, H);
+          const url = c.toDataURL('image/png');
+          show(url); set(url, true);
+        };
+        row.append(th, fi);
       } else if (p.type === 'check') {
         row.classList.add('check');
         row.innerHTML = `<label><input type="checkbox"> ${p.label}</label>`;

@@ -14,6 +14,8 @@
   const sel = (id, label, options, value) => ({ id, label, type: 'select', options, value });
   const col = (id, label, value) => ({ id, label, type: 'color', value });
   const chk = (id, label, value) => ({ id, label, type: 'check', value });
+  const crv = (id, label, value) => ({ id, label, type: 'curve', value });
+  const img = (id, label) => ({ id, label, type: 'image', value: '' });
 
   // ---------------------------------------------------------------- node types
   const DEFS = {
@@ -124,6 +126,66 @@
     ${['r = pc;', 'r = c0 * pc * 2.0;', 'r = max(c0, pc);', 'r = min(c0, pc);', 'r = pc * (luma(c0) / max(luma(pc), 1e-3));'][n.sel.blend]}
     ${n.O.colour} = mix(c0, max(r, 0.0), m); }`,
     },
+    terrace: {
+      title: 'Terrace', hue: 60, desc: 'Cuts terrain into steps and ledges.',
+      inputs: [{ id: 'height', label: 'Height', kind: V, def: '0.0' }, { id: 'where', label: 'Where', kind: V, def: '1.0' }],
+      outputs: [{ id: 'height', label: 'Height', kind: V }, { id: 'ledges', label: 'Ledge edges', kind: V }],
+      params: [rng('step', 'Step height (m)', 5, 4000, 5, 300), rng('sharp', 'Sharpness', 0, 1, 0.01, 0.75), rng('jitter', 'Irregularity', 0, 1, 0.01, 0.35), rng('size', 'Irregularity size (km)', 5, 2000, 1, 150)],
+      glsl: (n) => `{ float hh = ${n.I.height};
+    float st = ${n.P.step} * (1.0 + ${n.P.jitter} * 0.6 * fbm(p * fr(${n.P.size}) + seedOff(uSeed + ${n.id}.0), 4));
+    float v = hh / st, fl = floor(v), f = fract(v), s = 0.5 * (1.0 - ${n.P.sharp});
+    float t = (fl + sstep(0.5 - s - 0.001, 0.5 + s + 0.001, f)) * st;
+    ${n.O.height} = mix(hh, t, ${n.I.where}); ${n.O.ledges} = ${n.I.where} * exp(-sq((f - 0.5) / max(0.02, s + 0.04))); }`,
+    },
+    curve: {
+      title: 'Curve', hue: 170, sat: 30, desc: 'Remaps a value through a curve (contrast, levels, invert…).',
+      inputs: [{ id: 'value', label: 'Value', kind: V, def: '0.0' }],
+      outputs: [{ id: 'value', label: 'Value', kind: V }],
+      params: [rng('from', 'Input from', -20000, 20000, 0.01, 0), rng('to', 'Input to', -20000, 20000, 0.01, 1), crv('curve', 'Curve', [0, 0.25, 0.5, 0.75, 1]),
+        rng('outFrom', 'Output from', -20000, 20000, 0.01, 0), rng('outTo', 'Output to', -20000, 20000, 0.01, 1)],
+      lib: 'curve',
+      glsl: (n) => `${n.O.value} = mix(${n.P.outFrom}, ${n.P.outTo}, curve5(sat((${n.I.value} - ${n.P.from}) / max(1e-6, ${n.P.to} - ${n.P.from})), ${n.P.curve}));`,
+    },
+    smooth: {
+      title: 'Smooth / Sharpen', hue: 200, sat: 30, desc: 'Blurs, sharpens or extracts detail at a chosen scale.',
+      inputs: [{ id: 'value', label: 'Value', kind: V, def: 'baseH' }],
+      outputs: [{ id: 'value', label: 'Value', kind: V }],
+      params: [sel('mode', 'Mode', [[0, 'Blur'], [1, 'Sharpen'], [2, 'Detail only (high-pass)']], 0), rng('radius', 'Radius (km)', 1, 3000, 1, 80), rng('amount', 'Amount', 0, 4, 0.01, 1)],
+      barrier: 'value',
+      glslBarrier: (n) => { const o = `at(uBar${n.id}).r`, b = `at(uBarB${n.id}).r`;
+        return `${n.O.value} = ${[`mix(${o}, ${b}, sat(${n.P.amount}))`, `${o} + ${n.P.amount} * (${o} - ${b})`, `${n.P.amount} * (${o} - ${b})`][n.sel.mode]};`; },
+    },
+    erosion: {
+      title: 'Erosion', hue: 150, desc: 'Real river erosion: valleys, drainage networks and river mask.',
+      inputs: [{ id: 'height', label: 'Height', kind: V, def: 'baseH' }],
+      outputs: [{ id: 'height', label: 'Height', kind: V }, { id: 'rivers', label: 'Rivers', kind: V }, { id: 'eroded', label: 'Eroded (m)', kind: V }],
+      params: [rng('steps', 'Erosion time (steps)', 20, 800, 10, 150), rng('strength', 'River incision', 0.1, 6, 0.05, 1.2), rng('concentrate', 'Flow concentration', 1, 8, 0.1, 2.5),
+        rng('creep', 'Hillslope creep', 0, 0.2, 0.005, 0.02), rng('talus', 'Max stable slope', 0.1, 2, 0.01, 0.8), rng('rivers', 'River threshold (log km²)', 1, 6, 0.05, 3.4)],
+      barrier: 'height',
+      glslBarrier: (n) => `${n.O.height} = at(uBar${n.id}).r;
+  ${n.O.rivers} = sat((log(max(at(uBarB${n.id}).r, 1e-3)) / 2.302585 - ${n.P.rivers}) / 1.2);
+  ${n.O.eroded} = at(uBarC${n.id}).r - at(uBar${n.id}).r;`,
+    },
+    image: {
+      title: 'Image', hue: 250, desc: 'Uses your own equirectangular image (mask, heightmap or colours).',
+      inputs: [],
+      outputs: [{ id: 'value', label: 'Brightness', kind: V }, { id: 'colour', label: 'Colour', kind: C }, { id: 'alpha', label: 'Alpha', kind: V }],
+      params: [img('image', 'Image (2:1 map)'), rng('lon', 'Rotate (°)', -180, 180, 1, 0), chk('flip', 'Flip vertically', false)],
+      glsl: (n) => `{ vec2 ll = dirLatLon(p);
+    vec2 uv = vec2(fract((ll.y + PI) / TAU + ${n.P.lon} / 360.0), 0.5 - ll.x / PI);
+    ${n.sel.flip ? 'uv.y = 1.0 - uv.y;' : ''}
+    vec4 t = texture(${n.P.image}, uv);
+    ${n.O.value} = luma(t.rgb); ${n.O.colour} = srgbToLinear(t.rgb); ${n.O.alpha} = t.a; }`,
+    },
+    province: {
+      title: 'Province', hue: 20, desc: 'Planet-scale shapes: Venus bright belts, Mars dark provinces, regions.',
+      inputs: [],
+      outputs: [{ id: 'mask', label: 'Mask', kind: V }, { id: 'filaments', label: 'Filaments / streaks', kind: V }, { id: 'edge', label: 'Edge band', kind: V }],
+      params: [sel('style', 'Shape', [[1, 'Regions'], [2, 'Filament belts (Venus)'], [3, 'Streaky provinces (Mars)']], 2), rng('cover', 'Coverage', 0, 1, 0.01, 0.3),
+        rng('size', 'Size (km)', 100, 8000, 10, 2500), rng('stretch', 'Wind stretch', 0, 1, 0.01, 0), rng('jag', 'Ragged edges', 0, 3, 0.01, 1), rng('seed', 'Seed', 0, 100, 1, 1)],
+      glsl: (n) => `{ vec3 pv = provinceShape(vec4(${n.sel.style}.0, ${n.P.cover}, ${n.P.size}, ${n.P.jag}), vec4(0.0, 0.0, ${n.P.stretch}, ${n.P.seed}), ${n.id}.0, p, uR, uTex, seedOff(uSeed + 91.0));
+    ${n.O.mask} = pv.x; ${n.O.filaments} = pv.y; ${n.O.edge} = pv.z; }`,
+    },
     output: {
       title: 'Output', hue: 0, sat: 0, desc: 'What gets previewed and exported.',
       inputs: [{ id: 'height', label: 'Height', kind: V, def: 'baseH' }, { id: 'colour', label: 'Colour', kind: C, def: 'baseC' }],
@@ -132,7 +194,7 @@
       glsl: (n) => `outH = ${n.I.height}; outC = ${n.I.colour};`,
     },
   };
-  const ADDABLE = ['terrain', 'craters', 'fractures', 'plateaus', 'volcanoes', 'mask', 'math', 'paint', 'world', 'output'];
+  const ADDABLE = ['terrain', 'craters', 'fractures', 'plateaus', 'volcanoes', 'province', 'erosion', 'terrace', 'mask', 'math', 'curve', 'smooth', 'image', 'paint', 'world', 'output'];
 
   // ---------------------------------------------------------------- GLSL library for the heavier nodes
   const LIB = {
@@ -143,6 +205,14 @@ layout(location = 0) out vec4 oH;
 layout(location = 1) out vec4 oC;
 float fr(float km) { return uR / (max(km, 0.001) * 1000.0); }
 float azimuth(vec3 p, vec3 c) { vec3 e = eastOf(c), n = cross(c, e); vec3 v = p - c; return atan(dot(v, n), dot(v, e)); }
+`,
+    curve: String.raw`
+float curve5(float t, float k[5]) {             // Catmull-Rom through 5 evenly spaced points
+  float x = t * 4.0; int i = int(min(floor(x), 3.0)); float f = x - float(i);
+  float p0 = k[max(i - 1, 0)], p1 = k[i], p2 = k[i + 1], p3 = k[min(i + 2, 4)];
+  vec4 w = crW(f);
+  return w.x * p0 + w.y * p1 + w.z * p2 + w.w * p3;
+}
 `,
     craters: String.raw`
 // x height (m, before depth ×), y bright ejecta/rays, z crater floors
@@ -298,56 +368,66 @@ vec3 nodeVolcanoes(vec3 p, float dens, float sizeKm, float caldera, float reach,
   };
   const glslNum = (x) => { const s = String(+x); return /[.e]/.test(s) ? s : s + '.0'; };
 
+  function strHash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (Math.imul(h, 31) + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + str.length; }
+
+  // Compiles the graph into stages. Nodes that need their input as a texture (blur, erosion) are
+  // "barriers": their input is rendered first, processed on the GPU, and read back by later stages.
   function compile(graph) {
     const byId = new Map(graph.nodes.map((n) => [n.id, n]));
     const src = new Map();
     for (const l of graph.links) if (byId.has(l.from[0]) && byId.has(l.to[0])) src.set(l.to[0] + ':' + l.to[1], l.from);
     const out = graph.nodes.find((n) => n.type === 'output');
     if (!out) return { identity: true };
-    const order = [], state = new Map();
-    const visit = (id) => {
-      if (state.get(id) === 2) return;
-      if (state.get(id) === 1) throw new Error('Node graph has a loop.');
-      state.set(id, 1);
-      const n = byId.get(id);
-      for (const i of DEFS[n.type].inputs) { const s = src.get(id + ':' + i.id); if (s) visit(s[0]); }
-      state.set(id, 2); order.push(n);
-    };
-    visit(out.id);
-    // identity: only World -> Output with height→height, colour→colour (or nothing connected)
     const hs = src.get(out.id + ':height'), cs = src.get(out.id + ':colour');
-    const isWorld = (s, o) => !s || (byId.get(s[0]).type === 'world' && s[1] === o);
+    const isWorld = (s0, o) => !s0 || (byId.get(s0[0]).type === 'world' && s0[1] === o);
     if (isWorld(hs, 'height') && isWorld(cs, 'colour')) return { identity: true };
+    const kindOf = (s0) => DEFS[byId.get(s0[0]).type].outputs.find((o) => o.id === s0[1]).kind;
 
-    const libs = new Set(), uniforms = {};
-    let decl = '', body = '', key = '';
-    const kindOf = (s) => DEFS[byId.get(s[0]).type].outputs.find((o) => o.id === s[1]).kind;
-    for (const n of order) {
-      const def = DEFS[n.type];
-      if (def.lib) libs.add(def.lib);
-      const I = {}, P = {}, O = {}, selv = {};
-      for (const i of def.inputs) {
-        const s = src.get(n.id + ':' + i.id);
-        if (!s) { I[i.id] = i.def; continue; }
-        const v = `n${s[0]}_${s[1]}`, k = kindOf(s);
-        I[i.id] = k === i.kind ? v : i.kind === C ? `vec3(${v})` : `luma(${v})`;
+    // Emit one shader computing `roots` (array of [socket or null, default expr, kind]).
+    function emit(roots) {
+      const order = [], state = new Map(), barriers = new Set();
+      const visit = (id) => {
+        if (state.get(id) === 2) return;
+        if (state.get(id) === 1) throw new Error('Node graph has a loop.');
+        state.set(id, 1);
+        const n = byId.get(id), def = DEFS[n.type];
+        if (def.barrier) barriers.add(id);
+        else for (const i of def.inputs) { const s0 = src.get(id + ':' + i.id); if (s0) visit(s0[0]); }
+        state.set(id, 2); order.push(n);
+      };
+      for (const r of roots) if (r[0]) visit(r[0][0]);
+      const libs = new Set(), uniforms = {};
+      let decl = '', body = '';
+      for (const n of order) {
+        const def = DEFS[n.type];
+        if (def.lib) libs.add(def.lib);
+        const I = {}, P = {}, O = {}, selv = {};
+        for (const i of def.inputs) {
+          const s0 = src.get(n.id + ':' + i.id);
+          if (!s0) { I[i.id] = i.def; continue; }
+          const v = `n${s0[0]}_${s0[1]}`, k = kindOf(s0);
+          I[i.id] = k === i.kind ? v : i.kind === C ? `vec3(${v})` : `luma(${v})`;
+        }
+        for (const p of def.params) {
+          const val = n.params[p.id] ?? p.value;
+          if (p.type === 'select') { selv[p.id] = +val; continue; }
+          if (p.type === 'check') { selv[p.id] = !!val; continue; }
+          const u = `u${n.id}_${p.id}`;
+          P[p.id] = u;
+          if (p.type === 'color') { decl += `uniform vec3 ${u};\n`; uniforms[u] = hexLin(val); }
+          else if (p.type === 'curve') { decl += `uniform float ${u}[5];\n`; uniforms[u] = Float32Array.from(val); }
+          else if (p.type === 'image') { decl += `uniform sampler2D ${u};\n`; uniforms[u] = { nodeImage: val }; }
+          else { decl += `uniform float ${u};\n`; uniforms[u] = +val; }
+        }
+        for (const o of def.outputs) { O[o.id] = `n${n.id}_${o.id}`; body += `  ${o.kind === C ? 'vec3' : 'float'} ${O[o.id]};\n`; }
+        if (def.barrier) {
+          decl += `uniform sampler2DArray uBar${n.id}, uBarB${n.id}, uBarC${n.id};\n`;
+          body += '  ' + def.glslBarrier({ id: n.id, I, P, O, sel: selv }) + '\n';
+        } else body += '  ' + def.glsl({ id: n.id, I, P, O, sel: selv }) + '\n';
       }
-      for (const p of def.params) {
-        const val = n.params[p.id] ?? p.value;
-        if (p.type === 'select') { selv[p.id] = +val; continue; }
-        if (p.type === 'check') { selv[p.id] = !!val; continue; }
-        const u = `u${n.id}_${p.id}`;
-        P[p.id] = u;
-        if (p.type === 'color') { decl += `uniform vec3 ${u};\n`; uniforms[u] = hexLin(val); }
-        else { decl += `uniform float ${u};\n`; uniforms[u] = +val; }
-      }
-      for (const o of def.outputs) { O[o.id] = `n${n.id}_${o.id}`; body += `  ${o.kind === C ? 'vec3' : 'float'} ${O[o.id]};\n`; }
-      body += '  ' + def.glsl({ id: n.id, I, P, O, sel: selv }) + '\n';
-      key += `${n.type}${n.id}:${JSON.stringify(selv)}|`;
-    }
-    for (const l of graph.links) key += `${l.from}>${l.to};`;
-    const needSlope = order.some((n) => n.type === 'world');
-    const fs = `//#include planet\n${LIB.common}\n${[...libs].map((l) => LIB[l]).join('\n')}\n${decl}
+      const expr = (r) => { if (!r[0]) return r[1]; const v = `n${r[0][0]}_${r[0][1]}`, k = kindOf(r[0]); return k === r[2] ? v : r[2] === C ? `vec3(${v})` : `luma(${v})`; };
+      const needSlope = order.some((n) => n.type === 'world');
+      const fs = `//#include planet\n${LIB.common}\n${[...libs].map((l) => LIB[l]).join('\n')}\n${decl}
 void main() {
   vec3 p = cellDir();
   float baseH = at(uBaseH).r;
@@ -358,14 +438,27 @@ void main() {
   ${needSlope ? `{ float d = texelAngle(uN) * uR;
     float gx = nb(uBaseH, ivec2(1, 0)).r - nb(uBaseH, ivec2(-1, 0)).r, gy = nb(uBaseH, ivec2(0, 1)).r - nb(uBaseH, ivec2(0, -1)).r;
     baseSlope = length(vec2(gx, gy)) / (2.0 * d) * pow(max(d, 50.0) / 5000.0, 0.3); }` : ''}
-  float outH = baseH; vec3 outC = baseC;
 ${body}
-  oH = vec4(outH);
-  oC = vec4(linearToSrgb(sat3(outC)), bc.a);
+  oH = vec4(${expr(roots[0])});
+  oC = vec4(linearToSrgb(sat3(${roots[1] ? expr(roots[1]) : 'baseC'})), bc.a);
 }
 `;
-    let hash = 0; for (let i = 0; i < key.length; i++) hash = (Math.imul(hash, 31) + key.charCodeAt(i)) | 0;
-    return { identity: false, fs, uniforms, key: 'nodes.' + (hash >>> 0).toString(36) + '.' + key.length };
+      return { fs, uniforms, key: 'nodes.' + strHash(fs), barriers: [...barriers] };
+    }
+
+    // barrier stages in dependency order
+    const stages = [], done = new Set();
+    const stageFor = (id) => {
+      if (done.has(id)) return; done.add(id);
+      const n = byId.get(id), def = DEFS[n.type];
+      const e = emit([[src.get(id + ':' + def.barrier) || null, def.inputs.find((i) => i.id === def.barrier).def, V]]);
+      e.barriers.forEach(stageFor);
+      const params = {}; for (const p of def.params) params[p.id] = n.params[p.id] ?? p.value;
+      stages.push({ id, type: n.type, params, ...e, cacheKey: e.key + JSON.stringify(e.uniforms, (k, v) => (v instanceof Float32Array ? [...v] : v)).length + JSON.stringify(params) + strHash(JSON.stringify(e.uniforms, (k, v) => (v instanceof Float32Array ? [...v] : v))) });
+    };
+    const final = emit([[hs || null, 'baseH', V], [cs || null, 'baseC', C]]);
+    final.barriers.forEach(stageFor);
+    return { identity: false, stages, final };
   }
 
   // ---------------------------------------------------------------- run on a world
@@ -381,21 +474,86 @@ ${body}
     })();
     return running;
   }
+
+  const imageCache = new Map();   // dataURL -> texture
+  async function imageTexture(gpu, url) {
+    if (!url) return gpu._dummy2D();
+    if (imageCache.has(url)) return imageCache.get(url);
+    const im = new Image(); im.src = url;
+    await im.decode();
+    const gl = gpu.gl, t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, im);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    imageCache.set(url, t);
+    return t;
+  }
+
   async function applyNow(world, graph) {
-    const gpu = world.ctx.gpu;
+    const gpu = world.ctx.gpu, ops = world.ctx.ops, N = world.N;
     const c = compile(graph || { nodes: [], links: [] });
     if (c.identity) { world.useBase(); return; }
-    const prog = await gpu.programAsync(c.key, c.fs);
+    const base = {
+      uBaseH: world.baseH, uBaseC: world.baseAlbedo, uBaseM: world.M || world.baseH,
+      uR: world.R, uTex: Math.PI / 2 / N, uHmin: world.baseHmin, uHmax: world.baseHmax, uSeed: (world.ctx.seed % 997) + 0.5,
+    };
+    const resolve = async (u) => { const r = {}; for (const k in u) r[k] = u[k] && u[k].nodeImage !== undefined ? await imageTexture(gpu, u[k].nodeImage) : u[k]; return r; };
+    world.nodeCache = world.nodeCache || new Map();
+    const used = new Set(), bar = {};
+    const barUniforms = (ids) => { const r = {}; for (const id of ids) { const t = bar[id]; r['uBar' + id] = t.a; r['uBarB' + id] = t.b || t.a; r['uBarC' + id] = t.c || t.a; } return r; };
+    for (const st of c.stages) {
+      let entry = world.nodeCache.get(st.cacheKey);
+      if (!entry) {
+        const prog = await gpu.programAsync(st.key, st.fs);
+        const inp = gpu.field(N, 'r32f'), dummyC = gpu.field(N, 'rgba8');
+        await gpu.runTiled(prog, [inp, dummyC], { ...base, ...(await resolve(st.uniforms)), ...barUniforms(st.barriers) });
+        gpu.free(dummyC);
+        entry = await processBarrier(world, st, inp);
+        world.nodeCache.set(st.cacheKey, entry);
+      }
+      used.add(st.cacheKey);
+      bar[st.id] = entry;
+      if (world.disposed) return;
+    }
+    // free cached stage results no longer in the graph
+    for (const [k, e] of world.nodeCache) if (!used.has(k)) { for (const t of [e.a, e.b, e.c]) if (t) gpu.free(t); world.nodeCache.delete(k); }
+    const prog = await gpu.programAsync(c.final.key, c.final.fs);
     if (world.disposed) return;
-    if (!world.nodeH) { world.nodeH = gpu.field(world.N, 'r32f', 'nodeH'); world.nodeC = gpu.field(world.N, 'rgba8', 'nodeC'); }
-    await gpu.runTiled(prog, [world.nodeH, world.nodeC], {
-      ...c.uniforms, uBaseH: world.baseH, uBaseC: world.baseAlbedo, uBaseM: world.M || world.baseH,
-      uR: world.R, uTex: Math.PI / 2 / world.N, uHmin: world.baseHmin, uHmax: world.baseHmax, uSeed: (world.ctx.seed % 997) + 0.5,
-    });
+    if (!world.nodeH) { world.nodeH = gpu.field(N, 'r32f', 'nodeH'); world.nodeC = gpu.field(N, 'rgba8', 'nodeC'); }
+    await gpu.runTiled(prog, [world.nodeH, world.nodeC], { ...base, ...(await resolve(c.final.uniforms)), ...barUniforms(c.final.barriers) });
     if (world.disposed) return;
     world.H = world.nodeH; world.albedo = world.nodeC;
-    const st = world.ctx.ops.fieldStats(world.H, 0, 128);
-    world.ctx.hmin = st.min; world.ctx.hmax = st.max;
+    const stt = ops.fieldStats(world.H, 0, 128);
+    world.ctx.hmin = stt.min; world.ctx.hmax = stt.max;
+  }
+
+  // blur via a coarse copy (texel ≈ radius) upsampled bicubically; erosion via the real simulation
+  async function processBarrier(world, st, inp) {
+    const gpu = world.ctx.gpu, ops = world.ctx.ops, N = world.N, R = world.R;
+    if (st.type === 'smooth') {
+      const want = Math.PI / 2 * R / (Math.max(1, st.params.radius) * 1000);
+      let n = N; while (n > 8 && n / 2 >= want) n /= 2;
+      let cur = inp;
+      const chain = [];
+      while (cur.N > n) { const nx = Math.max(n, cur.N / 8); const f = gpu.field(nx, 'r32f'); ops.resample(cur, f); chain.push(f); cur = f; }
+      const blurred = gpu.field(N, 'r32f');
+      if (cur === inp) ops.copy(inp, blurred); else ops.resample(cur, blurred, true);
+      chain.forEach((f) => gpu.free(f));
+      return { a: inp, b: blurred };
+    }
+    if (st.type === 'erosion') {
+      const orig = gpu.field(N, 'r32f'); ops.copy(inp, orig);
+      const T = gpu.field(16, 'rgba16f'); ops.scaleOffset(inp, T, [0, 0, 0, 0], [0, 0, 0, 0]);
+      const q = st.params;
+      const ctx = { ...world.ctx, P: { ...world.P, erosion: true, erosionIterations: q.steps, erosionStrength: q.strength, flowExponent: q.concentrate, hillslope: q.creep, talus: q.talus, uplift: 0, fillRate: world.P.fillRate ?? 1.5, erosionBaseRes: 128 } };
+      const A = await S.Erosion.run(ctx, inp, T, () => {}, 0, 1);
+      gpu.free(T);
+      return { a: inp, b: A || orig, c: orig };
+    }
+    return { a: inp };
   }
 
   // ---------------------------------------------------------------- graphs
@@ -425,6 +583,21 @@ ${body}
       links: [{ from: [1, 'height'], to: [3, 'height'] }, { from: [3, 'height'], to: [4, 'height'] }, { from: [4, 'height'], to: [2, 'height'] },
         { from: [1, 'colour'], to: [5, 'colour'] }, { from: [3, 'cliffs'], to: [5, 'mask'] }, { from: [5, 'colour'], to: [2, 'colour'] }], nextId: 6 }),
   };
+
+  Object.assign(EXAMPLES, {
+    'Eroded valleys with river colour': () => ({ nodes: [node(1, 'world', 20, 40), node(3, 'erosion', 270, 20, { steps: 180, strength: 1.5 }),
+      node(4, 'paint', 530, 200, { color: '#3d2a22', strength: 0.55, fray: 0.3 }), node(2, 'output', 790, 60)],
+      links: [{ from: [1, 'height'], to: [3, 'height'] }, { from: [3, 'height'], to: [2, 'height'] }, { from: [1, 'colour'], to: [4, 'colour'] }, { from: [3, 'rivers'], to: [4, 'mask'] }, { from: [4, 'colour'], to: [2, 'colour'] }], nextId: 5 }),
+    'Venus bright belts on any world': () => ({ nodes: [node(1, 'world', 20, 40), node(3, 'province', 20, 330, { style: 2, cover: 0.3, size: 3000 }),
+      node(4, 'paint', 280, 160, { color: '#f2c060', strength: 0.5, blend: 2 }), node(5, 'paint', 530, 200, { color: '#fff0b0', strength: 0.7, blend: 2, fray: 0.4 }), node(2, 'output', 790, 60)],
+      links: [{ from: [1, 'height'], to: [2, 'height'] }, { from: [1, 'colour'], to: [4, 'colour'] }, { from: [3, 'mask'], to: [4, 'mask'] }, { from: [4, 'colour'], to: [5, 'colour'] }, { from: [3, 'filaments'], to: [5, 'mask'] }, { from: [5, 'colour'], to: [2, 'colour'] }], nextId: 6 }),
+    'Mars dark provinces on any world': () => ({ nodes: [node(1, 'world', 20, 40), node(3, 'province', 20, 330, { style: 3, cover: 0.3, size: 2500, stretch: 0.6, jag: 1.5 }),
+      node(4, 'terrain', 280, 20, { style: 3, size: 20, amount: 250 }), node(5, 'paint', 530, 220, { color: '#4a2e22', strength: 0.75, fray: 0.8 }), node(2, 'output', 790, 60)],
+      links: [{ from: [1, 'height'], to: [4, 'height'] }, { from: [3, 'mask'], to: [4, 'where'] }, { from: [4, 'height'], to: [2, 'height'] }, { from: [1, 'colour'], to: [5, 'colour'] }, { from: [3, 'mask'], to: [5, 'mask'] }, { from: [5, 'colour'], to: [2, 'colour'] }], nextId: 6 }),
+    'Terraced canyons (terrace + sharpen)': () => ({ nodes: [node(1, 'world', 20, 40), node(3, 'terrace', 270, 20, { step: 400, sharp: 0.8 }), node(4, 'smooth', 520, 20, { mode: 1, radius: 30, amount: 1.2 }),
+      node(5, 'paint', 520, 300, { color: '#d8b48c', strength: 0.45, blend: 2 }), node(2, 'output', 780, 60)],
+      links: [{ from: [1, 'height'], to: [3, 'height'] }, { from: [3, 'height'], to: [4, 'value'] }, { from: [4, 'value'], to: [2, 'height'] }, { from: [1, 'colour'], to: [5, 'colour'] }, { from: [3, 'ledges'], to: [5, 'mask'] }, { from: [5, 'colour'], to: [2, 'colour'] }], nextId: 6 }),
+  });
 
   S.Nodes = { DEFS, ADDABLE, EXAMPLES, compile, apply, defaultGraph };
 })();
