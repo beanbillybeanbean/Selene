@@ -2,8 +2,11 @@
 
 Selene generates realistic, seamless planet maps for **KSP (Kopernicus)** and **Blender**:
 16-bit height maps, colour (albedo) maps, normal maps and emission maps. It is built for rocky,
-icy and volcanic worlds. The presets are Mars, Venus, a Cracked world, the Moon, Mercury, Europa, Enceladus, Ganymede, Charon, Io, a lava world, and a fractured exotic world. Every parameter is editable.
-An Earth-like generator is included too.
+icy and volcanic worlds. Every parameter is editable. The presets are:
+- **Rocky:** Mars, Venus, a Cracked world, the Moon, Mercury, a lava world, and a fractured exotic world.
+- **Icy:** Europa, Enceladus, Ganymede, Callisto, Charon, Pluto, Triton, Titan, and a Banded moon (dark crust, bright patches, a painted equatorial canyon and an equatorial ridge).
+- **Volcanic:** Io.
+- **Earth-like:** Earth, a Desert world (no oceans), a Snowball world and an Ocean world (island arcs).
 
 Everything runs on your GPU in the browser. There is nothing to install.
 
@@ -40,9 +43,21 @@ The **Great provinces** section adds up to three planet-scale layers to any worl
 - **Filament belts:** Venus-style broad bright zones laced with bright ridge filaments.
 - **Streaky provinces:** Mars-style dark regions, wind-stretched, with dense detail inside and along their ragged edges.
 - **Regions:** plain soft-edged provinces.
+- **Scattered patches:** many separate blotches of varying strength, like frost or dark deposits on an icy moon.
 
 Each layer has its own colour (the Province 1–3 palette entries), coverage, size, interior and edge detail,
-edge brightness and wind stretch.
+edge brightness and wind stretch. **Latitude bias** pulls a layer towards a band of latitude (the centre and width
+are set separately), e.g. Mars's dark southern belt or Venus's bright equatorial belt. Negative bias keeps it away from that band.
+**Variety** varies how strong each patch is.
+
+### Equatorial ridges, painted canyons and pits
+These are in the **Fractures & ice** section.
+- **Equatorial ridge** (like Iapetus): a segmented mountain ridge around a great circle.
+  Set its height, width, tilt and how continuous it is. It can carry a streaky colour band.
+- **Canyon on the equator:** the first canyon follows the equator. Separate controls set its depth and width.
+- **Canyon band:** streaks the canyon floor and walls with a bright, dark or secondary deposit. The band reaches
+  beyond the rims, so it looks painted on while still following the real relief.
+- **Dimples:** fields of rimmed pits (Callisto and Triton style knobby, pitted ground).
 
 ### Node editor (remix and recolour)
 Press **◈ Nodes** in the bar under the globe. A Blender-style panel opens under the preview.
@@ -62,7 +77,7 @@ Changes re-apply in about a second, without regenerating the planet.
   | Mask | Picks out a height band, latitude, random patches or a hemisphere |
   | Math | Adds, multiplies, mixes or combines two values |
   | Paint | Paints a colour where its mask is |
-  | Province | Planet-scale shapes: Venus-style bright filament belts, Mars-style dark streaky provinces, regions |
+  | Province | Planet-scale shapes: Venus-style bright filament belts, Mars-style dark streaky provinces, regions, scattered patches; optional latitude band |
   | Erosion | Runs real river erosion on its input; outputs eroded height, a river mask and how much was eroded |
   | Terrace | Cuts terrain into steps and ledges |
   | Curve | Remaps a value through a curve you drag (contrast, invert, levels) |
@@ -168,7 +183,7 @@ material with colour, normal, roughness and emission.
     Venusian coronae, tesserae, shield fields and wrinkle ridges.
   - **Ice and fractures:** Io paterae and block mountains, fracture networks, grooved terrain,
     Europan double-ridge lineae and chaos, Enceladus tiger stripes, Valles-style canyons, dunes,
-    and polar layered deposits.
+    polar layered deposits, Iapetus-style equatorial ridges and pitted "dimple" terrain.
 - **Erosion** (Mars, Earth): stream-power fluvial incision with iterative multiple-flow drainage
   accumulation on the GPU, hillslope creep, talus collapse and depression filling. It runs
   coarse-to-fine, re-injecting detail at each level.

@@ -39,7 +39,7 @@ void main() {
   float hy = sampleDir(uH, normalize(p + n * texelAngle(uN))).r - sampleDir(uH, normalize(p - n * texelAngle(uN))).r;
   vec2 g = vec2(hx, hy) / (2.0 * d);
   float oceanic = sampleDir(uOceanLo, p).r;             // large-scale fraction of ocean nearby
-  float T = seaTemp(p) - uLapse * max(h - uSea, 0.0) * 0.001;
+  float T = seaTemp(p) - uLapse * max(h - max(uSea, 0.0), 0.0) * 0.001;
   // continental interiors are colder in the mean at mid/high latitude (Siberia, Canada)
   T -= 7.0 * (1.0 - oceanic) * sstep(0.2, 0.8, abs(p.y)) * (h > uSea ? 1.0 : 0.0);
   T += 1.5 * fbm(p * 5.0 + seedOff(uSeed), 3);

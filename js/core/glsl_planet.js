@@ -188,11 +188,12 @@ float ejectaBright(float d, float ang, float fresh, float seedf) {
 //   wind-stretched, ragged streaky edges).
 uniform vec4 uPv0[3];   // style, coverage 0..1, size km, edge raggedness
 uniform vec4 uPv1[3];   // interior detail m, edge detail m, wind stretch, seed
+uniform vec4 uPv2[3];   // latitude centre (deg), latitude width (deg), latitude strength, patch variety
 // x = mask, y = filaments / streak texture, z = edge band
-vec3 provinceShape(vec4 A, vec4 B, float salt, vec3 p, float R, float tex, vec3 so);
-vec3 provinceAt(int i, vec3 p, float R, float tex, vec3 so) { return provinceShape(uPv0[i], uPv1[i], float(i), p, R, tex, so); }
+vec3 provinceShape(vec4 A, vec4 B, vec4 Cq, float salt, vec3 p, float R, float tex, vec3 so);
+vec3 provinceAt(int i, vec3 p, float R, float tex, vec3 so) { return provinceShape(uPv0[i], uPv1[i], uPv2[i], float(i), p, R, tex, so); }
 // A = (style, coverage, size km, raggedness), B = (unused, unused, wind stretch, seed)
-vec3 provinceShape(vec4 A, vec4 B, float salt, vec3 p, float R, float tex, vec3 so) {
+vec3 provinceShape(vec4 A, vec4 B, vec4 Cq, float salt, vec3 p, float R, float tex, vec3 so) {
   int st = int(A.x + 0.5);
   if (st == 0) return vec3(0.0);
   vec3 s2 = so + seedOff(B.w * 13.0 + salt * 7.0 + 1.0);
@@ -202,6 +203,18 @@ vec3 provinceShape(vec4 A, vec4 B, float salt, vec3 p, float R, float tex, vec3 
   if (stretch > 0.0) { vec3 e = eastOf(p); q = p - e * dot(p, e) * stretch * 0.8; }
   vec3 w = q * f + s2;
   float v = warped(w, 2, 0.7) + 0.08 * fbm(w * 3.0, 4) + A.w * 0.06 * jag(p, f * 12.0, tex);
+  // latitude bias: concentrate the provinces in a band (e.g. Mars' dark southern low latitudes)
+  if (Cq.z != 0.0) { float la = degrees(asin(clamp(p.y, -1.0, 1.0))); v += Cq.z * 0.7 * (exp(-sq((la - Cq.x) / max(Cq.y, 1.0))) - 0.45); }
+  if (st == 4) {                                         // scattered patches: many ragged blobs of distinct terrain
+    vec3 w4 = q * f * 3.0 + s2;
+    float pv = fbm(w4 + 0.6 * warpVec(w4 * 0.5, 2), 5, 2.1, 0.55) + A.w * 0.08 * jag(p, f * 30.0, tex) + 0.5 * (v - 0.3) * Cq.z;
+    float thr4 = 0.35 - 0.7 * A.y;
+    float ew4 = max(0.015, tex * f * 3.0);
+    float m4 = sstep(thr4 - ew4, thr4 + ew4, pv);
+    Cell cc = cellular(w4 * 0.8, 404u);                  // each patch has its own intensity
+    float vary = mix(1.0, 0.45 + 0.55 * cc.id, Cq.w);
+    return vec3(m4 * vary, m4 * sstep(0.0, 0.4, fbm(w4 * 4.0, 3)), exp(-sq((pv - thr4) / (ew4 * 4.0))));
+  }
   float thr = 0.3 - 0.6 * A.y;
   float ew = st == 3 ? 0.09 : 0.05;
   float fil = 0.0;

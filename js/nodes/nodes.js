@@ -181,9 +181,9 @@
       title: 'Province', hue: 20, desc: 'Planet-scale shapes: Venus bright belts, Mars dark provinces, regions.',
       inputs: [],
       outputs: [{ id: 'mask', label: 'Mask', kind: V }, { id: 'filaments', label: 'Filaments / streaks', kind: V }, { id: 'edge', label: 'Edge band', kind: V }],
-      params: [sel('style', 'Shape', [[1, 'Regions'], [2, 'Filament belts (Venus)'], [3, 'Streaky provinces (Mars)']], 2), rng('cover', 'Coverage', 0, 1, 0.01, 0.3),
+      params: [sel('style', 'Shape', [[1, 'Regions'], [2, 'Filament belts (Venus)'], [3, 'Streaky provinces (Mars)'], [4, 'Scattered patches']], 2), rng('latc', 'Latitude centre (°)', -90, 90, 1, 0), rng('latw', 'Latitude width (°)', 5, 90, 1, 30), rng('lats', 'Latitude bias', -1.5, 1.5, 0.01, 0), rng('cover', 'Coverage', 0, 1, 0.01, 0.3),
         rng('size', 'Size (km)', 100, 8000, 10, 2500), rng('stretch', 'Wind stretch', 0, 1, 0.01, 0), rng('jag', 'Ragged edges', 0, 3, 0.01, 1), rng('seed', 'Seed', 0, 100, 1, 1)],
-      glsl: (n) => `{ vec3 pv = provinceShape(vec4(${n.sel.style}.0, ${n.P.cover}, ${n.P.size}, ${n.P.jag}), vec4(0.0, 0.0, ${n.P.stretch}, ${n.P.seed}), ${n.id}.0, p, uR, uTex, seedOff(uSeed + 91.0));
+      glsl: (n) => `{ vec3 pv = provinceShape(vec4(${n.sel.style}.0, ${n.P.cover}, ${n.P.size}, ${n.P.jag}), vec4(0.0, 0.0, ${n.P.stretch}, ${n.P.seed}), vec4(${n.P.latc}, ${n.P.latw}, ${n.P.lats}, 0.6), ${n.id}.0, p, uR, uTex, seedOff(uSeed + 91.0));
     ${n.O.mask} = pv.x; ${n.O.filaments} = pv.y; ${n.O.edge} = pv.z; }`,
     },
     painted: {

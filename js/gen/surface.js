@@ -55,7 +55,7 @@ void main() {
 
   if (uModel == 0) {
     vec4 cl = sampleDir(uClim, p);
-    float T = cl.r - 0.0065 * (max(h - uSea, 0.0) - max(cl.b - uSea, 0.0));
+    float T = cl.r - 0.0065 * (max(h - max(uSea, 0.0), 0.0) - max(cl.b - max(uSea, 0.0), 0.0));
     float Pm = cl.g;
     if (h < uSea) {
       float depth = uSea - h;
@@ -78,6 +78,11 @@ void main() {
       soil = mix(soil, uPale, sstep(0.25, 0.55, -l2 - 0.3 * l3) * sstep(0.03, 0.005, slope) * 0.7);
       float erg = sstep(0.14, 0.05, W) * sstep(0.04, 0.012, slope) * sstep(-0.1, 0.35, fbm(p * 4.0 + so * 2.0, 3));
       soil = mix(soil, uSand * 1.06, erg);
+      if (uSea < -1e8) { // dry world: sand seas fill the old ocean basins, salt pans floor the deepest flats
+        float hb = sat((h - uHmin) / max(1.0, uHmax - uHmin)) + 0.08 * l1 + 0.03 * micro;
+        soil = mix(soil, uSand * (1.02 + 0.06 * fbm(p * 60.0 + so, 3)), sstep(0.5, 0.36, hb) * sstep(0.06, 0.02, slope));
+        soil = mix(soil, uPale, sstep(0.14, 0.07, hb + 0.06 * l3) * sstep(0.025, 0.008, slope) * 0.85);
+      }
       float veg = sstep(0.1, 0.7, W) * sstep(-9.0, 1.0, T);
       float forest = sstep(0.5, 1.05, W + 0.08 * l2) * sstep(-5.0, 3.0, T);
       vec3 grass = mix(uSteppe, uGrass, sstep(0.3, 0.95, W));

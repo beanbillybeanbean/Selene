@@ -44,6 +44,8 @@ uniform float uDunes, uTerrace, uMare, uMareLevel, uLavaLevel, uLavaCracks;
 uniform float uCapH, uCapLat;
 uniform float uScarpAmp, uScarpScale, uScarpLip, uRubble;
 uniform float uSecondYoung;
+uniform float uEqRidge, uEqWidth, uEqTilt, uEqCover, uEqBand, uEqBandW, uCanyonBand, uCanyonBandW, uCanyonDepth, uDimple, uDimpleSize, uDimpleCover;
+uniform int uEqBandCh, uCanyonBandCh;
 uniform float uMicro, uUnitScale, uJag, uFurrow, uPalimp, uPateraFlows;
 layout(location = 0) out vec4 oH;
 layout(location = 1) out vec4 oM;
@@ -258,7 +260,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
         vec3 tg = cos(B.y) * e + sin(B.y) * n;
         vec3 ax = normalize(cross(c, tg));
         float along = atan(dot(p, tg), dot(p, c));
-        if (abs(along) > r * 1.1 || dot(p, c) < 0.0) continue;
+        if (abs(along) > r * 1.1) continue;
         float wob = snoise(p * fr(300.0) + float(i)) * B.z * 0.8 + snoise(p * fr(60.0) - float(i)) * B.z * 0.25;
         float dist = abs(dot(p, ax) - sin(B.w) + wob * (t == 10 ? 1.5 : 1.0));
         float x = dist / B.z;
@@ -275,8 +277,15 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
           float steps = floor(wall * 5.0) / 5.0 + sstep(0.6, 1.0, fract(wall * 5.0)) / 5.0;
           float prof = -(1.0 - mix(wall, steps, 0.5));
           float gully = sstep(1.0, 1.8, wn) * sstep(2.6, 1.6, wn) * pow(max(0.0, snoise(vec3(along / B.z * 1.5, float(i), 0.0))), 2.0);
-          h += win * (prof * 7000.0 - 1500.0 * gully) * sstep(0.0, 0.2, 1.0 - abs(along) / r);
+          h += win * (prof * uCanyonDepth - uCanyonDepth * 0.2 * gully) * sstep(0.0, 0.2, 1.0 - abs(along) / r);
           m.b = max(m.b, win * 0.6 * sstep(0.9, 0.4, wn));
+          if (uCanyonBand > 0.0) {                // deposits spread either side: streaks across the canyon, ragged edges
+            float streak = 0.55 + 0.45 * snoise(vec3(along / B.z * 0.35, x * 0.04, float(i) * 3.0)) + 0.3 * snoise(vec3(along / B.z * 1.3, x * 0.15, float(i)));
+            float reach = uCanyonBandW * (0.6 + 0.6 * (0.5 + 0.5 * snoise(vec3(along / B.z * 0.12, float(i), 5.0))));
+            float band = sat(uCanyonBand * win * sstep(reach + 0.4 * reach * jag(p, fr(60.0), uTex), 0.3 * reach, x) * sat(streak));
+            band = frayed(band, jag(p + 1.7, fr(25.0), uTex), 1.0);
+            if (uCanyonBandCh == 0) m.r = max(m.r, band); else if (uCanyonBandCh == 1) m.g = max(m.g, band); else m.b = max(m.b, band);
+          }
         }
         continue;
       }
@@ -326,6 +335,39 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
         m.b = max(m.b, 0.5 * sstep(1.4, 1.0, d / edge) * (1.0 - inside));
       }
     }
+` },
+    eqRidge: { on: (U) => U.uEqRidge !== 0, code: String.raw`
+    { float tl = radians(uEqTilt);                // equatorial ridge: a segmented mountain chain around a great circle
+      vec3 ax = normalize(vec3(0.0, cos(tl), sin(tl)));
+      vec3 b1 = normalize(cross(ax, vec3(0.0, 0.0, 1.0) + vec3(0.3, 0.0, 0.0))), b2 = cross(ax, b1);
+      float lonA = atan(dot(p, b2), dot(p, b1));
+      vec3 ring = vec3(cos(lonA), sin(lonA), 0.0);
+      float offKm = asin(clamp(dot(p, ax), -1.0, 1.0)) * uR * 0.001;
+      float wob = uEqWidth * (0.9 * fbm(ring * 2.0 + SO, 3) + 0.25 * fbm(ring * 9.0 - SO, 3));
+      float x = (offKm - wob) / uEqWidth;
+      float seg = sstep(1.0 - uEqCover, 1.0 - uEqCover + 0.25, 0.5 + 0.6 * fbm(ring * 5.0 + SO * 2.0, 4));
+      float peaks = 0.45 + 0.75 * ridgedEroded(p * fr(uEqWidth * 0.5) + SO, octaves(fr(uEqWidth * 0.5), uTex), 2.05, 0.55, 0.8);
+      float chain = exp(-x * x * 1.4) * peaks + 0.25 * exp(-x * x * 0.25) * (0.5 + 0.5 * fbm(p * fr(uEqWidth * 2.0), 4));
+      h += uEqRidge * seg * chain;
+      if (uEqBand > 0.0) {                         // the ridge carries its own colour band, frayed and streaky
+        float bw = uEqBandW / uEqWidth;
+        float streak = 0.6 + 0.5 * snoise(ring * 14.0 + vec3(0.0, 0.0, x * 0.3)) + 0.3 * snoise(ring * 40.0 + vec3(0.0, 0.0, x));
+        float band = sat(uEqBand * sstep(bw * 1.1, bw * 0.3, abs(x) + 0.35 * bw * jag(p, fr(80.0), uTex)) * sat(streak) * mix(0.35, 1.0, seg));
+        band = frayed(band, jag(p - 2.3, fr(30.0), uTex), 1.0);
+        if (uEqBandCh == 0) m.r = max(m.r, band); else if (uEqBandCh == 1) m.g = max(m.g, band); else m.b = max(m.b, band);
+      } }
+` },
+    dimples: { on: (U) => U.uDimple > 0, code: String.raw`
+    { vec3 q = p * fr(uDimpleSize) + SO * 1.7 + 0.25 * warpVec(p * fr(uDimpleSize * 6.0), 2);   // cantaloupe terrain
+      float region = sstep(1.0 - uDimpleCover, 1.0 - uDimpleCover + 0.12, 0.5 + 0.6 * warped(p * 2.2 + SO * 3.3, 3, 0.8));
+      if (region > 0.0) {
+        Cell c = cellular(q, 707u);
+        float ed = cellEdge(c, q) + 0.03 * jag(p, fr(uDimpleSize * 0.3), uTex);
+        float pit = 1.0 - sstep(0.0, 0.5, c.f1);
+        float rim = sstep(0.09, 0.0, ed);
+        h += uDimple * region * (0.55 * rim - 0.7 * pit * (0.6 + 0.4 * c.id));
+        m.b = max(m.b, region * rim * 0.35);
+      } }
 ` },
     lineaeNet: { on: (U) => U.uLinNet > 0, code: String.raw`
     { float fracMask = fracMaskAt(p);          // long, curving, crossing ridge families of different ages
@@ -564,7 +606,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
 
   // Passes: feature groups sharing one small shader. Heavy features get a pass of their own.
   const STAGE0 = [['base', 'montes', 'rubble'], ['provinces'], ['scarps'], ['tesserae', 'shields', 'blocks'], ['oldCraters'], ['list0', 'mare', 'wrinkle']];
-  const STAGE1 = [['texture'], ['lanes'], ['lineaeNet'], ['craters'], ['list1'], ['flows', 'cracks'], ['grooves', 'chaos', 'canyonNet'], ['paterae'], ['dunes', 'terraces', 'lava', 'caps']];
+  const STAGE1 = [['texture'], ['lanes'], ['lineaeNet'], ['eqRidge', 'dimples'], ['craters'], ['list1'], ['flows', 'cracks'], ['grooves', 'chaos', 'canyonNet'], ['paterae'], ['dunes', 'terraces', 'lava', 'caps']];
 
   function passSource(names) {
     const defs = [...new Set(names.map((n) => BLOCKS[n].def).filter(Boolean))].map((d) => `#define ${d} 1`).join('\n');
@@ -597,7 +639,17 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       out.push({ A: [...S.randDir(r), km(D / 2)], B: [F.RAYED, D, (0.6 + 0.4 * r()) * (P.rayBrightness ?? 1), r() * 100] });
     }
     for (let i = 0; i < (P.lineae | 0); i++) out.push(arcFeature(r, F.LINEA, 0.2 + 0.6 * r(), km(3 + 6 * r()), (r() - 0.5) * 0.08));
-    for (let i = 0; i < (P.canyons | 0); i++) out.push(arcFeature(r, F.CANYON, km(P.canyonLength * (0.4 + 0.6 * r())) / 2, km(40 + 60 * r()), (r() - 0.5) * 0.1));
+    for (let i = 0; i < (P.canyons | 0); i++) {
+      const f = arcFeature(r, F.CANYON, km(P.canyonLength * (0.4 + 0.6 * r())) / 2, km((40 + 60 * r()) * (P.canyonWidth ?? 1)), (r() - 0.5) * 0.1);
+      if (i === 0 && P.canyonEquator) {            // the great canyon runs along the equator (or the ridge line)
+        const tl = (P.eqTilt || 0) * Math.PI / 180, lon = r() * Math.PI * 2;
+        const ax = [0, Math.cos(tl), Math.sin(tl)], b1 = S.vnorm(S.vcross(ax, [0.3, 0, 1])), b2 = S.vcross(ax, b1);
+        const c = S.vnorm([b1[0] * Math.cos(lon) + b2[0] * Math.sin(lon), b1[1] * Math.cos(lon) + b2[1] * Math.sin(lon), b1[2] * Math.cos(lon) + b2[2] * Math.sin(lon)]);
+        const e = S.vnorm([c[2], 0, -c[0]]), nn = S.vcross(c, e), t = S.vcross(ax, c);
+        f.A = [...c, km(P.canyonLength) / 2]; f.B[1] = Math.atan2(S.vdot(t, nn), S.vdot(t, e)); f.B[3] = 0;
+      }
+      out.push(f);
+    }
     if (P.tigerStripes) {
       const c = [0, -0.98, 0.2]; const cn = S.vnorm(c);
       for (let k = 0; k < 4; k++) { const off = S.vnorm([cn[0] + (k - 1.5) * 0.06, cn[1], cn[2] + (k - 1.5) * 0.05]); out.push({ A: [...off, km(70)], B: [F.STRIPE, 0.6, km(2.5), 0] }); }
@@ -609,7 +661,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
 
   // great-province layers (shared with the colour stage)
   function provinceUniforms(P) {
-    const a = new Float32Array(12), b = new Float32Array(12);
+    const a = new Float32Array(12), b = new Float32Array(12), c = new Float32Array(12);
     let on = false;
     for (let k = 0; k < 3; k++) {
       const g = (x, d = 0) => (P['pv' + (k + 1) + x] ?? d);
@@ -617,8 +669,9 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       if (st > 0) on = true;
       a.set([st, +g('Cover', 0.3), +g('Size', 1500), +g('Jag', 1)], k * 4);
       b.set([+g('Detail'), +g('EdgeDetail'), +g('Stretch'), +g('Seed', k + 1)], k * 4);
+      c.set([+g('LatC'), +g('LatW', 30), +g('LatBias'), +g('Variety', 0.6)], k * 4);
     }
-    return { uPv0: a, uPv1: b, pvOn: on };
+    return { uPv0: a, uPv1: b, uPv2: c, pvOn: on };
   }
   S.provinceUniforms = provinceUniforms;
 
@@ -626,7 +679,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
     const f = makeFeatures(P, ctx.R, ctx.seed);
     const a = new Float32Array(MAXF * 4), b = new Float32Array(MAXF * 4);
     f.forEach((x, i) => { a.set(x.A, i * 4); b.set(x.B, i * 4); });
-    const d = S.randDir(S.rng(ctx.seed + 5));
+    const d = P.dichoDir ? S.vnorm(P.dichoDir) : S.randDir(S.rng(ctx.seed + 5));
     const n = (v, def = 0) => (v === undefined || v === null ? def : +v);
     const craterMaxRad = n(P.craterMax, 150) * 500 / ctx.R, tex = Math.PI / 2 / ctx.N;
     const types = new Set(f.map((x) => x.B[0]));
@@ -651,6 +704,9 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       uDunes: n(P.dunes), uTerrace: n(P.terraces), uMare: n(P.maria), uMareLevel: n(P.mareLevel, -1500),
       uLavaLevel: P.lavaSea ? n(P.lavaLevel, -500) : -1e9, uLavaCracks: n(P.lavaCracks),
       uScarpAmp: n(P.scarps), uScarpScale: n(P.scarpScale, 600), uScarpLip: n(P.scarpLip, 0.3), uRubble: n(P.rubble), uMicro: n(P.microRelief), uUnitScale: n(P.unitScale, 250), uJag: n(P.edgeJag, 1), uFurrow: n(P.furrows), uPalimp: n(P.palimpsests), uPateraFlows: n(P.pateraFlows), uSecondYoung: n(P.youngSecondary),
+      uEqRidge: n(P.eqRidge), uEqWidth: n(P.eqRidgeWidth, 80), uEqTilt: n(P.eqTilt), uEqCover: n(P.eqRidgeCover, 0.8), uEqBand: n(P.eqBand), uEqBandW: n(P.eqBandWidth, 250), uEqBandCh: Math.round(n(P.eqBandMaterial)),
+      uCanyonBand: n(P.canyonBand), uCanyonBandW: n(P.canyonBandWidth, 4), uCanyonBandCh: Math.round(n(P.canyonBandMaterial)), uCanyonDepth: n(P.canyonDepth, 7000),
+      uDimple: n(P.dimples), uDimpleSize: n(P.dimpleSize, 40), uDimpleCover: n(P.dimpleCover, 0.5),
       ...provinceUniforms(P),
       uCapH: P.iceCaps ? n(P.capHeight, 2500) : 0, uCapLat: Math.sin((90 - n(P.capSize, 8)) * Math.PI / 180),
     };
