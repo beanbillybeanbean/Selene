@@ -168,6 +168,12 @@
     r('Colouring', 'regionalScale', 'Province size', 0.5, 10, 0.05, { show: W, help: 'Lower = larger regions.' }),
     r('Colouring', 'regionalTopo', 'Provinces follow elevation', -2, 2, 0.01, { show: W }),
     r('Colouring', 'regional2', 'Second provinces (alt 2)', 0, 1, 0.01, { show: W }),
+    r('Colouring', 'hueLock', 'Unify hue', 0, 1, 0.01, { show: W, help: 'Real planets vary mostly in brightness, not hue. Pulls every colour toward the low/high ground hue, keeping its brightness.' }),
+    r('Colouring', 'windStreaks', 'Wind-streaked patterns', 0, 1, 0.01, { show: W, help: 'Stretches albedo regions east–west, like dust and dark sand shaped by prevailing winds.' }),
+    r('Colouring', 'streakTexture', 'Fine streak texture', 0, 2, 0.01, { show: W }),
+    r('Colouring', 'roughColor', 'Rough ground colour', 0, 1, 0.01, { show: W, help: 'Rough, blocky or fresh terrain takes the "Rough ground" colour (bright on Venus, rocky on Mars).' }),
+    r('Colouring', 'smoothDark', 'Smooth plains darker', 0, 1, 0.01, { show: W }),
+    r('Colouring', 'broadRelief', 'Colour follows broad relief', 0, 2, 0.01, { show: W, help: 'Hills and ridges tens of km across brighter, basins darker.' }),
     r('Colouring', 'polarTint', 'Polar tint', 0, 1, 0.01, { show: W }),
     { group: 'Colouring', key: 'polarSide', label: 'Polar tint on', type: 'select', options: [[0, 'Both poles'], [1, 'North pole only'], [-1, 'South pole only']], show: w((P) => P.polarTint > 0) },
     r('Colouring', 'polarLat', 'Polar tint starts at (sin lat)', 0, 1, 0.01, { show: w((P) => P.polarTint > 0) }),
@@ -185,7 +191,7 @@
   const COLOR_LABELS = {
     low: 'Low ground', high: 'High ground', alt: 'Province colour', alt2: 'Province colour 2', polar: 'Polar tint', hemi: 'Hemisphere tint',
     cliff: 'Cliffs & slopes', dark: 'Dark material (maria, lava, lineae)', second: 'Secondary (sand, chaos, plume red)', bright: 'Fresh ejecta / frost',
-    ice: 'Ice caps', lava: 'Molten lava (albedo)',
+    ice: 'Ice caps', lava: 'Molten lava (albedo)', rough: 'Rough ground',
     deep: 'Deep ocean', mid: 'Open ocean', shelf: 'Continental shelf', reef: 'Tropical shallows', seaIce: 'Sea ice', sand: 'Desert sand', red: 'Red desert',
     darkRock: 'Dark rock', pale: 'Salt flats', steppe: 'Steppe', savanna: 'Savanna', grass: 'Grassland', forestT: 'Temperate forest', forestTr: 'Rainforest',
     forestB: 'Boreal forest', tundra: 'Tundra', rock: 'Mountain rock', snow: 'Snow & ice',
@@ -226,7 +232,7 @@
     tesserae: 0, tesseraeCover: 0.15, coronae: 0, wrinkleRidges: 0, shieldFields: 0, shieldHeight: 800,
     paterae: 0, pateraDepth: 800, bigPaterae: 0, plumes: 0, blockMountains: 0, blockCover: 0.08,
     brightCraters: 0.02, basinFlood: 0, lineaeNet: 0, lineaeScale: 400, lineaeWidth: 4, lanes: 0, laneCover: 0.7, grooveBright: 0.35, laneScale: 900, laneWidth: 0.12, laneGrooves: 35,
-    fracturesInLowlands: 0, redPlumes: 1, riftBelt: 0, polarSide: 0, microRelief: 60, unitScale: 250, unitTone: 1, edgeJag: 1, colorFray: 0.8, reliefColor: 0.6, furrows: 0, palimpsests: 0, pateraFlows: 0, youngSecondary: 0, craterPatchiness: 0, mariaCraters: 1, flowUnits: 0, flowScale: 500, lowlandCraters: 1,
+    fracturesInLowlands: 0, redPlumes: 1, riftBelt: 0, polarSide: 0, hueLock: 0, windStreaks: 0, streakTexture: 0, roughColor: 0, smoothDark: 0, broadRelief: 0.4, microRelief: 60, unitScale: 250, unitTone: 1, edgeJag: 1, colorFray: 0.8, reliefColor: 0.6, furrows: 0, palimpsests: 0, pateraFlows: 0, youngSecondary: 0, craterPatchiness: 0, mariaCraters: 1, flowUnits: 0, flowScale: 500, lowlandCraters: 1,
     dunes: 0, terraces: 0, lavaSea: false, lavaLevel: -500, lavaCracks: 0, emissive: false,
     iceCaps: false, capSize: 8, capHeight: 2500,
     heightColor: 0.6, colorDistortion: 1, regional: 0.5, regionalScale: 2.5, regionalTopo: 0, regional2: 0.3,
@@ -243,9 +249,20 @@
       basins: 2, basinDepth: 6500, rises: 1, riseSize: 2600, riseHeight: 5500, giantVolcanoes: 4, volcanoHeight: 21000, volcanoScarp: 0.35,
       canyons: 1, canyonLength: 3800, erosion: true, erosionIterations: 140, erosionStrength: 0.9, flowExponent: 3, hillslope: 0.01, talus: 1.2, uplift: 0, dunes: 25,
       iceCaps: true, capSize: 7, capHeight: 2500, terraces: 0.15,
-      heightColor: 0.35, regional: 0.75, regionalScale: 2.2, regionalTopo: 0.5, regional2: 0.55, cliffColor: 0.25, curvatureColor: 0.08,
-      colors: { low: '#9a6644', high: '#a57252', alt: '#c69a6c', alt2: '#5c4436', polar: '#b59a82', hemi: '#a57252', cliff: '#7b5541', dark: '#4d3b30', second: '#3f3129', bright: '#d4b28c', ice: '#f1ece6', lava: '#301008' } } },
-    venus: { name: 'Venus-like', desc: 'Volcanic plains with wrinkle ridges, tessera highlands, coronae, shield fields, rift chasmata, large volcanoes and a thin scatter of pristine craters.', p: {
+      heightColor: 0.35, regional: 0.7, regionalScale: 2.0, regionalTopo: 0.5, regional2: 0.6, cliffColor: 0.2, curvatureColor: 0.08,
+      hueLock: 0.72, windStreaks: 0.65, streakTexture: 0.9, roughColor: 0.3, broadRelief: 0.9, colorFray: 0.5,
+      colors: { low: '#a3643a', high: '#b8784a', alt: '#d29d68', alt2: '#5f463a', polar: '#bda48e', hemi: '#b8784a', cliff: '#8e5c3c', dark: '#54402f', second: '#4b3a2e', bright: '#dbb68c', ice: '#f1ece6', lava: '#301008', rough: '#86573a' } } },
+    venus: { name: 'Venus-like', desc: 'Orange volcanic world as seen in radar-coloured maps: bright rough tesserae and fresh lava flows, darker smooth plains, radiating flow fields around great volcanoes, coronae, ridge belts and sparse pristine craters.', p: {
+      microRelief: 90, unitScale: 350, unitTone: 1.6, reliefColor: 1.2, broadRelief: 1.3, colorFray: 0.9, cracks: 60, crackScale: 150, crackCover: 0.25, lineaeNet: 110, lineaeScale: 700, lineaeWidth: 5,
+      geoRadius: 6052, landFraction: 0.25, continentScale: 1.1, highlandHeight: 2400, lowlandHeight: -700, provinceSharpness: 0.12, lowlandRoughness: 0.45, undulation: 1100, roughness: 450, hillScale: 160, erodedLook: 0.8,
+      tesserae: 2000, tesseraeCover: 0.15, coronae: 26, shieldFields: 0.45, shieldHeight: 450, wrinkleRidges: 180, rises: 4, riseSize: 2400, riseHeight: 3500,
+      giantVolcanoes: 9, volcanoHeight: 8000, volcanoScarp: 0, volcanoWidth: 1.6, canyons: 3, canyonLength: 3500,
+      craters: true, craterDensity: 0.02, craterMax: 270, transitionDiameter: 3, floorDark: 0.6, ejectaBright: 0.9, brightCraters: 0.2,
+      scarps: 180, scarpScale: 700, scarpLevels: 2, scarpLip: 0.2, rubble: 20, flowUnits: 0.45, flowScale: 800,
+      heightColor: 0.55, regional: 0.55, regionalScale: 2.2, regional2: 0.5, cliffColor: 0.25, curvatureColor: 0.15, darkMaterial: 1.1, brightMaterial: 1.4, secondMaterial: 0.9,
+      roughColor: 0.85, smoothDark: 0.55, hueLock: 0.35, windStreaks: 0.25, streakTexture: 0.4,
+      colors: { low: '#8c3a0c', high: '#c7621b', alt: '#dd8d2c', alt2: '#6b2807', polar: '#c7621b', hemi: '#c7621b', cliff: '#e59a38', dark: '#5c2206', second: '#eaa640', bright: '#f5c45c', ice: '#ffffff', lava: '#300c04', rough: '#f0b24a' } } },
+    cracked: { name: 'Cracked world', desc: 'Hot volcanic world broken into graben fields and ridge belts: lava-flow sheets, tesserae, coronae and fractured plains in muted browns.', p: {
       microRelief: 80, unitScale: 450, unitTone: 2.2, reliefColor: 1.0, colorFray: 1.0, cracks: 90, crackScale: 160, crackCover: 0.4, lineaeNet: 90, lineaeScale: 600, lineaeWidth: 4,
       geoRadius: 6052, landFraction: 0.22, highlandHeight: 2200, lowlandHeight: -600, provinceSharpness: 0.1, lowlandRoughness: 0.5, undulation: 900, roughness: 350, hillScale: 200, erodedLook: 0.6,
       tesserae: 1800, tesseraeCover: 0.13, coronae: 18, shieldFields: 0.35, shieldHeight: 500, wrinkleRidges: 160, rises: 3, riseSize: 2200, riseHeight: 3000,
@@ -255,6 +272,7 @@
       heightColor: 0.6, regional: 0.7, regionalScale: 1.8, regional2: 0.6, cliffColor: 0.3, curvatureColor: 0.1, darkMaterial: 1.2, brightMaterial: 1.6,
       colors: { low: '#6a4b31', high: '#9a7650', alt: '#9c7c54', alt2: '#5a432f', polar: '#8f6d4a', hemi: '#8f6d4a', cliff: '#a88a66', dark: '#4a3626', second: '#b39570', bright: '#c7a67c', ice: '#ffffff', lava: '#300c04' } } },
     moon: { name: 'Moon-like', desc: 'Saturated cratered highlands, multi-ring basins flooded by dark maria, bright rayed young craters.', p: {
+      hueLock: 0.85, broadRelief: 0.6,
       microRelief: 90, unitScale: 300,
       geoRadius: 1737, landFraction: 0.75, dichotomy: 0.12, highlandHeight: 1500, lowlandHeight: -2200, lowlandRoughness: 0.5, undulation: 1500, roughness: 1100, hillScale: 400, erodedLook: 0.3,
       craters: true, craterDensity: 0.6, oldCraters: 0.9, craterMax: 480, transitionDiameter: 18, craterFreshness: 1.0, ejectaBright: 1, brightCraters: 0.012, craterDepth: 0.8, mariaCraters: 0.25,
@@ -262,6 +280,7 @@
       heightColor: 0.3, regional: 0.3, regional2: 0.35, regionalScale: 3, cliffColor: 0.35, curvatureColor: 0.06, colorVariation: 0.6,
       colors: { low: '#8b8781', high: '#9c9892', alt: '#a8a39b', alt2: '#7c7873', polar: '#9c9892', hemi: '#9c9892', cliff: '#b3aea6', dark: '#4e4b48', second: '#5a5652', bright: '#d8d4cc', ice: '#ffffff', lava: '#000000' } } },
     mercury: { name: 'Mercury-like', desc: 'Dark, heavily cratered crust with smooth volcanic plains, long lobate thrust scarps and bright rayed craters.', p: {
+      hueLock: 0.8, broadRelief: 0.6,
       microRelief: 90, unitScale: 300,
       geoRadius: 2440, landFraction: 0.7, highlandHeight: 1200, lowlandHeight: -1800, undulation: 1300, roughness: 900, hillScale: 350, erodedLook: 0.3,
       craters: true, craterDensity: 0.55, oldCraters: 0.85, craterMax: 400, transitionDiameter: 10, ejectaBright: 1,
@@ -269,6 +288,7 @@
       heightColor: 0.3, regional: 0.35, regional2: 0.3, cliffColor: 0.3, curvatureColor: 0.06, colorVariation: 0.6,
       colors: { low: '#6f6a64', high: '#7a746d', alt: '#857e75', alt2: '#5f5b57', polar: '#7a746d', hemi: '#7a746d', cliff: '#948d84', dark: '#77726b', second: '#4c4845', bright: '#c7c5c2', ice: '#ffffff', lava: '#000000' } } },
     europa: { name: 'Europa-like', desc: 'Young ice shell: ridged plains, long double-ridge lineae, reddish chaos terrain, few craters, darker trailing hemisphere.', p: {
+      hueLock: 0.3, streakTexture: 0.3,
       microRelief: 35, unitScale: 150,
       geoRadius: 1561, landFraction: 0.5, highlandHeight: 120, lowlandHeight: -120, undulation: 250, roughness: 120, hillScale: 60, erodedLook: 0.2,
       grooves: 90, grooveSpacing: 3, grooveCover: 0.9, groovePatch: 220, grooveBright: 0, lineae: 16, lineaeNet: 180, lineaeScale: 450, lineaeWidth: 3.5, chaos: 350, chaosCover: 0.12, chaosBlock: 14,
@@ -276,6 +296,7 @@
       heightColor: 0.2, regional: 0.45, regionalScale: 3.5, regional2: 0.35, hemiTint: 0.5, hemiDir: [1, 0, 0], cliffColor: 0.1, curvatureColor: 0.12,
       colors: { low: '#d3ccbf', high: '#dedad2', alt: '#b09478', alt2: '#ecebea', polar: '#d9d4cb', hemi: '#a6866a', cliff: '#c0b6a6', dark: '#87593a', second: '#94664a', bright: '#f3f3f4', ice: '#ffffff', lava: '#000000' } } },
     enceladus: { name: 'Enceladus-like', desc: 'Brilliant white ice: grooved and fractured provinces, softened old craters, blue-green fissures and south-polar tiger stripes.', p: {
+      hueLock: 0.5,
       microRelief: 70, unitScale: 60,
       geoRadius: 252, landFraction: 0.5, highlandHeight: 300, lowlandHeight: -300, undulation: 600, roughness: 300, hillScale: 30, erodedLook: 0.4,
       landFraction: 0.4, grooves: 250, grooveSpacing: 1.5, grooveCover: 0.7, groovePatch: 70, cracks: 200, crackScale: 50, crackCover: 0.7, lineaeNet: 120, lineaeScale: 60, lineaeWidth: 1.2, fracturesInLowlands: 0.9, tigerStripes: true,
@@ -283,9 +304,9 @@
       heightColor: 0.15, regional: 0.3, regional2: 0.2, cliffColor: 0.25, curvatureColor: 0.1, colorVariation: 0.4,
       colors: { low: '#e3e8eb', high: '#f2f4f6', alt: '#f6f2ea', alt2: '#dbe3ea', polar: '#f2f4f6', hemi: '#f2f4f6', cliff: '#d2dadd', dark: '#8fb2b4', second: '#b9cfd2', bright: '#ffffff', ice: '#ffffff', lava: '#000000' } } },
     ganymede: { name: 'Ganymede-like', desc: 'Dark, ancient cratered terrain cut by bright grooved lanes (sulci), frosty poles and bright young craters.', p: {
-      microRelief: 110, unitScale: 300, furrows: 220, palimpsests: 0.5, colorFray: 0.35, youngSecondary: 1, mariaCraters: 0.4,
+      microRelief: 60, unitScale: 300, furrows: 160, palimpsests: 0.3, colorFray: 0.35, youngSecondary: 1, mariaCraters: 0.4, hueLock: 0.55, windStreaks: 0.35, streakTexture: 1.1, broadRelief: 0.5,
       geoRadius: 2634, landFraction: 0.5, highlandHeight: 400, lowlandHeight: -400, undulation: 700, roughness: 400, hillScale: 150, erodedLook: 0.5,
-      lanes: 350, laneScale: 1300, laneWidth: 0.16, laneCover: 0.55, laneGrooves: 30, craters: true, craterDensity: 0.16, oldCraters: 0.35, craterMax: 250, craterFreshness: 0.9, transitionDiameter: 25, craterDepth: 0.4, brightCraters: 0.06, rayed: 6, rayedSize: 70,
+      lanes: 250, laneScale: 2000, laneWidth: 0.24, laneCover: 0.9, laneGrooves: 70, craters: true, craterDensity: 0.1, oldCraters: 0.25, craterMax: 250, craterFreshness: 0.9, transitionDiameter: 25, craterDepth: 0.22, brightCraters: 0.06, rayed: 6, rayedSize: 70,
       heightColor: 0.2, regional: 0.4, regional2: 0.4, polarTint: 0.6, polarLat: 0.75, cliffColor: 0.2, curvatureColor: 0.08, brightMaterial: 1.3,
       colors: { low: '#5f574d', high: '#6a6157', alt: '#7a7065', alt2: '#4d463f', polar: '#c9c6c2', hemi: '#6a6157', cliff: '#8c8478', dark: '#4a433c', second: '#a39a8e', bright: '#d8d2c8', ice: '#ffffff', lava: '#000000' } } },
     io: { name: 'Io-like', desc: 'Sulfur plains in yellow, olive and white, black lava-floored paterae with glowing lakes, red plume rings, towering block mountains and reddish poles.', p: {
@@ -295,6 +316,7 @@
       emissive: true, heightColor: 0.25, regional: 0.55, regionalScale: 3, regional2: 0.5, polarTint: 0.85, polarLat: 0.5, cliffColor: 0.3, curvatureColor: 0.06,
       colors: { low: '#c7b35e', high: '#b9a65a', alt: '#e3dbb2', alt2: '#9b8d3e', polar: '#8b5d3b', hemi: '#b9a65a', cliff: '#8e7443', dark: '#28241e', second: '#b04b24', bright: '#ece6ca', ice: '#ffffff', lava: '#3a1408' } } },
     lava: { name: 'Lava world', desc: 'Black and grey basalt crust over a molten interior: lava seas in the lowlands, glowing fissure networks, fresh flows and volcanoes. Exports an emission map.', p: {
+      hueLock: 0.4, roughColor: 0.3,
       microRelief: 80, unitScale: 150,
       geoRadius: 5000, landFraction: 0.55, highlandHeight: 1500, lowlandHeight: -1200, undulation: 900, roughness: 700, hillScale: 150, erodedLook: 2,
       scarps: 400, scarpScale: 400, scarpLevels: 3, scarpLip: 0.3, rubble: 120, cracks: 250, crackScale: 200, crackCover: 0.6,
@@ -309,6 +331,7 @@
       heightColor: 0.6, regional: 0.55, regional2: 0.4, polarTint: 0.6, polarLat: 0.6, cliffColor: 0.5, curvatureColor: 0.25, colorVariation: 1.3,
       colors: { low: '#553766', high: '#7a4f7a', alt: '#b27b3a', alt2: '#6a4a38', polar: '#c89042', hemi: '#7a4f7a', cliff: '#b8b0d2', dark: '#2a1e30', second: '#9bbccb', bright: '#78d0cf', ice: '#ffffff', lava: '#000000' } } },
     charon: { name: 'Charon-like', desc: 'Grey-blue ice with a diffuse red polar cap, rugged cratered north, smooth resurfaced southern plains, and a belt of chasmata and stepped scarps between them.', p: {
+      hueLock: 0.6, broadRelief: 0.6,
       microRelief: 100, unitScale: 150,
       geoRadius: 606, landFraction: 0.55, continentScale: 0.9, continentWarp: 0.5, dichotomy: 0.9, highlandHeight: 1500, lowlandHeight: -1500, provinceSharpness: 0.06, lowlandRoughness: 0.12,
       undulation: 800, roughness: 700, hillScale: 80, erodedLook: 1.5, riftBelt: 3500, scarps: 500, scarpScale: 150, scarpLevels: 2, scarpLip: 0.2, cracks: 120, crackScale: 120, crackCover: 0.35,

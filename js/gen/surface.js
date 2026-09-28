@@ -11,11 +11,11 @@
   'use strict';
   const S = (window.Selene = window.Selene || {});
 
-  const WORLD_COLORS = ['low', 'high', 'alt', 'alt2', 'polar', 'hemi', 'cliff', 'dark', 'second', 'bright', 'ice', 'lava'];
+  const WORLD_COLORS = ['low', 'high', 'alt', 'alt2', 'polar', 'hemi', 'cliff', 'dark', 'second', 'bright', 'ice', 'lava', 'rough'];
 
   const FS = String.raw`
 //#include planet
-uniform sampler2DArray uH, uClim, uA, uMat, uHb;
+uniform sampler2DArray uH, uClim, uA, uMat, uHb, uHq, uH16, uRough;
 uniform int uModel;
 uniform float uSea, uR, uSeed, uHasA, uVar, uHmin, uHmax;
 // terran palette (linear)
@@ -23,7 +23,8 @@ uniform vec3 uDeep, uMid, uShelf, uReef, uSeaIce, uSand, uRed, uDarkRock, uPale,
              uForestT, uForestTr, uForestB, uTundra, uRock, uSnow;
 uniform float uVegK, uSnowBias, uRiverK;
 // world palette + controls
-uniform vec3 uC[12];
+uniform vec3 uC[13];
+uniform float uStreak, uStreakTex, uRoughK, uRoughDark, uRoughMean, uRel2K, uHueLock;
 uniform float uPolarSide;
 uniform float uHeightK, uColorDist, uRegional, uRegScale, uRegTopo, uRegional2, uPolarK, uPolarLat, uHemiK;
 uniform vec3 uHemiDir;
@@ -99,22 +100,27 @@ void main() {
     float hn = sat((h - uHmin) / max(1.0, uHmax - uHmin));
     // colour distortion so colour boundaries never follow contour lines exactly
     vec3 dp = p + uColorDist * 0.08 * warpVec(p * 5.0 + so, 4);
-    float dist = uColorDist * (0.6 * fbm(dp * 11.0 - so, 5) + 0.4 * fbm(dp * 40.0 + so, 4));
+    // wind streaking: albedo patterns are stretched along the local east-west wind direction
+    vec3 ew = eastOf(p);
+    vec3 ds = dp - ew * dot(dp, ew) * uStreak * 0.85;
+    float dist = uColorDist * (0.6 * fbm(ds * 11.0 - so, 5) + 0.4 * fbm(ds * 40.0 + so, 4));
     float t = sat(hn + 0.2 * dist);
     c = mix(uC[0], uC[1], sstep(0.15, 0.85, t) * uHeightK + (1.0 - uHeightK) * 0.5);
-    // regional albedo provinces: soft, blotchy, optionally tied to topography
-    // large soft shapes; fine octaves only fray the edges
-    float reg = warped(dp * uRegScale + so * 1.7, 3, 0.45) + 0.16 * fbm(dp * uRegScale * 6.0 + so, 5) + uRegTopo * (hn - 0.5) + 0.12 * dist;
+    // regional albedo provinces: large soft shapes, streaked by wind, fine octaves fray the edges
+    float reg = warped(ds * uRegScale + so * 1.7, 3, 0.45) + 0.16 * fbm(ds * uRegScale * 6.0 + so, 5) + uRegTopo * (hn - 0.5) + 0.12 * dist;
     float jA = jag(p, uR / 60000.0, uTex), jB = jag(p + 3.7, uR / 25000.0, uTex), jC = jag(p - 5.1, uR / 120000.0, uTex);
     c = mix(c, uC[2], frayed(sstep(-0.3, 0.35, reg), jA, uFray) * uRegional);
-    float reg2 = warped(dp * uRegScale * 1.3 - so * 2.3, 3, 0.45) + 0.16 * fbm(dp * uRegScale * 7.0 - so, 5) - 0.08 * dist;
+    float reg2 = warped(ds * uRegScale * 1.3 - so * 2.3, 3, 0.45) + 0.16 * fbm(ds * uRegScale * 7.0 - so, 5) - 0.08 * dist;
     c = mix(c, uC[3], frayed(sstep(-0.1, 0.4, reg2), jC, uFray) * uRegional2);
     // dust settles in lows (or highs when negative)
     c = mix(c, uC[2], sat(uDustLow * (0.5 - hn) * 2.0) * 0.6);
-    // latitude and hemisphere tints
-    float lat = uPolarSide == 0.0 ? abs(p.y) : p.y * uPolarSide;
-    c = mix(c, uC[4], sstep(uPolarLat, 1.0, lat + 0.1 * dist + 0.1 * fbm(dp * 6.0 + so, 4) + 0.12 * fbm(dp * 2.5 - so, 3)) * uPolarK);
-    c = mix(c, uC[5], sstep(-0.2, 0.9, dot(p, uHemiDir) + 0.2 * dist) * uHemiK);
+    // roughness: rough ground (blocky, fractured, fresh lava) takes the rough colour, smooth plains darken
+    if (uRoughK > 0.0 || uRoughDark > 0.0) {
+      float rough = sampleDir(uRough, p).r / max(uRoughMean, 1e-3);
+      float rw = sstep(0.55, 1.9, rough + 0.25 * dist);
+      c = mix(c, uC[12], rw * uRoughK);
+      c *= 1.0 - uRoughDark * 0.25 * (1.0 - rw);
+    }
     // relief-following colour: cliffs, ridges, hollows
     c = mix(c, uC[6], sstep(0.12, 0.5, slope) * uSlopeK);
     c *= 1.0 + uCurvK * curv;
@@ -133,11 +139,24 @@ void main() {
       float su = 1.0 - tu.x - tu.y;
       c *= 1.0 + uUnitTone * (0.08 * tu.x - 0.05 * su + 0.03 * tu.y + 0.08 * (fract(tu.z * 0.37) - 0.5));
     }
-    // local relief: knobs, crests and rims catch fresher, brighter material; hollows collect dark fines
+    // relief tone at two scales: knobs, crests and rims brighter; hollows and basins collect dark fines
     if (uRelK > 0.0) {
       float rel = h - sampleDirCubic(uHb, p);
       c *= 1.0 + uRelK * 0.14 * clamp(rel / uRelScale, -1.5, 1.5);
     }
+    if (uRel2K > 0.0) {
+      float rel2 = sampleDirCubic(uHq, p) - sampleDirCubic(uH16, p);
+      c *= 1.0 + uRel2K * 0.12 * clamp(rel2 / (uRelScale * 2.5), -1.5, 1.5);
+    }
+    // unify hue: real planets vary mostly in brightness, not in hue
+    if (uHueLock > 0.0) {
+      vec3 ref = 0.5 * (uC[0] + uC[1]);
+      c = mix(c, ref * (luma(c) / max(luma(ref), 1e-4)), uHueLock);
+    }
+    // latitude and hemisphere tints (after the hue lock, so caps and hemispheres keep their colour)
+    float lat = uPolarSide == 0.0 ? abs(p.y) : p.y * uPolarSide;
+    c = mix(c, uC[4], sstep(uPolarLat, 1.0, lat + 0.1 * dist + 0.1 * fbm(ds * 6.0 + so, 4) + 0.12 * fbm(ds * 2.5 - so, 3)) * uPolarK);
+    c = mix(c, uC[5], sstep(-0.2, 0.9, dot(p, uHemiDir) + 0.2 * dist) * uHemiK);
     if (uEmissive > 0.5) {
       float heat = sat(m.a);
       c = mix(c, uC[11], sstep(0.3, 0.8, heat));
@@ -147,10 +166,18 @@ void main() {
     }
     // multi-scale mottling (keeps large flat areas from looking synthetic)
     c *= 1.0 + uMottle * (0.1 * micro + 0.07 * l2 + 0.05 * l1);
+    // fine wind-streak texture (dust tails and dark streaks behind obstacles)
+    if (uStreakTex > 0.0) {
+      vec3 sp = p * (uR / 40000.0); sp -= ew * dot(sp, ew) * 0.92;
+      c *= 1.0 + uStreakTex * (0.09 * fbm(sp + so, 5) + 0.05 * fbm(sp * 3.1 - so, 4));
+    }
   }
   o = vec4(linearToSrgb(sat3(c)), water);
   oE = vec4(linearToSrgb(sat3(em)), 1.0);
 }`;
+
+  // |height − smoothed height|: raw roughness, averaged down later
+  const ABSHP = `uniform sampler2DArray uH, uHs; out vec4 o; void main() { o = vec4(abs(at(uH).r - sampleDirCubic(uHs, cellDir()))); }`;
 
   const hexLin = (hex) => {
     const v = parseInt(String(hex).replace('#', ''), 16);
@@ -164,13 +191,22 @@ void main() {
     const C = P.colors || {};
     const U = {};
     if (P.model === 'terran') for (const k in C) U['u' + k[0].toUpperCase() + k.slice(1)] = hexLin(C[k]);
-    const arr = new Float32Array(36);
-    WORLD_COLORS.forEach((k, i) => arr.set(hexLin(C[k] || '#808080'), i * 3));
+    const arr = new Float32Array(39);
+    WORLD_COLORS.forEach((k, i) => arr.set(hexLin(C[k] || (k === 'rough' ? (C.high || '#808080') : '#808080')), i * 3));
     const n = (v, d = 0) => (v === undefined || v === null ? d : +v);
     const out = gpu.field(ctx.N, 'rgba8', 'albedo'), em = gpu.field(ctx.N, 'rgba8', 'emission');
     // coarse copy of the height (1/8 resolution) for the local-relief tone
     const Hb = gpu.field(Math.max(16, ctx.N / 8), 'r32f');
     ctx.ops.resample(fields.H, Hb);
+    // multi-scale relief (1/4 and 1/16 resolution) and a roughness map (mean |height − local mean|)
+    const N = ctx.N, Hq = gpu.field(Math.max(16, N / 4), 'r32f'), H16 = gpu.field(Math.max(16, N / 16), 'r32f');
+    ctx.ops.resample(fields.H, Hq);
+    ctx.ops.resample(Hq, H16);
+    const hp = gpu.field(N, 'r32f'), rough = gpu.field(Math.max(16, N / 8), 'r32f');
+    await gpu.runTiled(await gpu.programAsync('surface.hp', ABSHP), hp, { uH: fields.H, uHs: Hq });
+    ctx.ops.resample(hp, rough);
+    gpu.free(hp);
+    const rmean = ctx.ops.fieldStats(rough, 0, 32).mean;
     const hd = S.randDir(S.rng(ctx.seed + 99));
     await gpu.runTiled(prog, [out, em], {
       ...U, uC: arr,
@@ -185,8 +221,10 @@ void main() {
       uDarkK: n(P.darkMaterial, 1), uSecondK: n(P.secondMaterial, 1), uBrightK: n(P.brightMaterial, 1), uIceK: n(P.iceMaterial, 1),
       uEmissive: P.emissive ? 1 : 0, uHb: Hb, uLSeed: (ctx.seed % 10007) + 0.5, uUnitScale: n(P.unitScale, 250), uUnitTone: P.microRelief > 0 ? n(P.unitTone, 1) : 0,
       uFray: n(P.colorFray, 0.8), uRelK: n(P.reliefColor, 0.6), uRelScale: Math.max(50, ((ctx.hmax ?? 5000) - (ctx.hmin ?? -5000)) * 0.03), uTex: Math.PI / 2 / ctx.N, uMottle: n(P.colorVariation, 1), uDustLow: n(P.dustInLows),
+      uHq: Hq, uH16: H16, uRough: rough, uRoughMean: rmean, uRoughK: n(P.roughColor), uRoughDark: n(P.smoothDark),
+      uStreak: n(P.windStreaks), uStreakTex: n(P.streakTexture), uRel2K: n(P.broadRelief), uHueLock: n(P.hueLock),
     }, { progress: (f) => report('Painting the surface', 0.95 + 0.04 * f) });
-    gpu.free(Hb);
+    gpu.free(Hb); gpu.free(Hq); gpu.free(H16); gpu.free(rough);
     return { albedo: out, emission: em };
   }
 
