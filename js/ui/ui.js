@@ -37,7 +37,7 @@
       if (!P.colors[k]) P.colors[k] = S.Surface.defaultColor(k, P.colors);
       const c = document.createElement('input');
       c.type = 'color'; c.value = P.colors[k];
-      c.oninput = () => { P.colors[k] = c.value; };
+      c.oninput = () => { P.colors[k] = c.value; paramsChanged(); };
       const l = document.createElement('span'); l.textContent = S.COLOR_LABELS[k] || k;
       pal.append(c, l);
     }
@@ -60,7 +60,7 @@
       el.className = 'ctl bool';
       el.innerHTML = `<input type="checkbox"> <span>${it.label}</span> ${help}`;
       const cb = el.querySelector('input'); cb.checked = !!P[it.key];
-      cb.onchange = () => { P[it.key] = cb.checked; buildPanel(); };
+      cb.onchange = () => { P[it.key] = cb.checked; buildPanel(); paramsChanged(); };
       return el;
     }
     if (it.type === 'select' || it.type === 'text') {
@@ -69,7 +69,7 @@
       const inp = document.createElement(it.type === 'select' ? 'select' : 'input');
       if (it.type === 'select') for (const [v, t] of it.options) inp.add(new Option(t, v));
       inp.value = P[it.key];
-      inp.onchange = () => { P[it.key] = it.type === 'select' ? +inp.value : inp.value; };
+      inp.onchange = () => { P[it.key] = it.type === 'select' ? +inp.value : inp.value; paramsChanged(); };
       el.appendChild(inp);
       return el;
     }
@@ -80,6 +80,7 @@
     const set = (v, from) => {
       v = Math.min(it.max, Math.max(it.min, +v)); if (it.type === 'int') v = Math.round(v);
       P[it.key] = v; if (from !== rg) rg.value = v; if (from !== nm) nm.value = v;
+      paramsChanged();
       if (/^(craters|basins|rises|giantVolcanoes|canyons|canyonNet|cracks|grooves|chaos|scarps|paterae|tesserae|shieldFields|blockMountains|maria|rayed)$/.test(it.key)) scheduleRebuild();
     };
     rg.oninput = () => set(rg.value, rg);
@@ -161,28 +162,39 @@
     $('progtxt').textContent = msg;
     $('progfill').style.width = `${Math.round(Math.max(0, Math.min(1, f)) * 100)}%`;
   }
-  async function generate() {
+  // Live preview: a quick low-resolution rebuild shortly after you stop changing settings.
+  let liveT = 0, liveQueued = false;
+  function paramsChanged() {
+    if (!$('live').checked || !world) return;
+    clearTimeout(liveT);
+    liveT = setTimeout(() => { if (busy) { liveQueued = true; return; } generate({ live: true }); }, 450);
+  }
+  async function generate(opts = {}) {
     if (busy) return;
-    busy = true; $('gen').disabled = true; $('exGo').disabled = true;
+    const live = !!opts.live;
+    busy = true; $('gen').disabled = !live; $('exGo').disabled = true;
     preview.busy = true;
     try {
       P.seed = $('seed').value; P.resolution = +$('res').value;
-      if (world) { world.dispose(); world = null; preview.setWorld(null); }
-      const w = await S.generate(gpu, JSON.parse(JSON.stringify(P)), progress);
-      world = w;
+      const Q = JSON.parse(JSON.stringify(P));
+      if (live) { Q.resolution = Math.min(Q.resolution, 128); Q.erosionIterations = Math.min(Q.erosionIterations || 0, 60); }
+      if (!live && world) { world.dispose(); world = null; preview.setWorld(null); }   // free GPU memory before a full build
+      const w = await S.generate(gpu, Q, live ? (m, f) => progress('Live preview: ' + m, f) : progress);
+      if (world) world.dispose();
+      world = w; world.live = live;
       preview.setWorld(w);
       $('empty').hidden = true;
-      progress(`Done in ${w.seconds.toFixed(1)} s`, 1);
-      const R = w.R / 1000;
+      progress(live ? `Live preview (low resolution, ${w.seconds.toFixed(1)} s) — press Generate for full quality` : `Done in ${w.seconds.toFixed(1)} s`, 1);
       updateStats();
       fillWidths();
     } catch (e) { showError(e); progress('Failed — see error', 0); }
     busy = false; $('gen').disabled = false; $('exGo').disabled = false; preview.busy = false; preview.dirty = true;
+    if (liveQueued) { liveQueued = false; paramsChanged(); }
   }
 
   function updateStats() {
     const w = world; if (!w) return;
-    const nodesOn = w.H !== w.baseH ? ' · node graph applied' : '';
+    const nodesOn = (w.H !== w.baseH ? ' · node graph applied' : '') + (w.live ? ' · live preview' : '');
     $('stats').innerHTML = `${P.userPreset ? '★ ' + P.userPreset : S.PRESETS[P.preset] ? S.PRESETS[P.preset].name : ''} · seed “${P.seed}”${nodesOn}<br>relief ${(w.ctx.hmin / 1000).toFixed(1)} … ${(w.ctx.hmax / 1000).toFixed(1)} km on a ${(w.R / 1000).toFixed(0)} km world<br>${w.N}² × 6 cube faces · GPU memory ${gpu.memoryMB().toFixed(0)} MB`;
   }
 
@@ -267,6 +279,7 @@
   // ------------------------------------------------------------------ export
   async function doExport() {
     if (!world || busy) return;
+    if (world.live) { await generate(); if (!world || world.live) return; }   // never export the low-res live preview
     busy = true; $('exGo').disabled = true; $('gen').disabled = true; preview.busy = true;
     const ep = (m) => { $('exProg').textContent = m; };
     try {
@@ -359,7 +372,7 @@
     $('delPreset').onclick = deleteUserPreset;
     $('dice').onclick = () => { $('seed').value = Math.random().toString(36).slice(2, 8); P.seed = $('seed').value; };
     $('res').onchange = () => { P.resolution = +$('res').value; fillWidths(); };
-    $('gen').onclick = generate;
+    $('gen').onclick = () => generate();
     $('exGo').onclick = doExport;
     $('exGo').disabled = true;
     $('exAuto').onclick = () => { if (world) $('exHScale').value = (+$('exRadius').value * 1000 / world.R).toPrecision(3); };

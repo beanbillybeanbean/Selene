@@ -31,6 +31,19 @@ Exports can go up to **16384 × 8192** from any resolution. They are rendered in
 
 \*On a mid-range desktop GPU. Worlds with erosion (Mars, Earth) take longer.
 
+### Live preview
+With **Live** ticked (top bar), changing any setting rebuilds a quick low-resolution preview about half a
+second after you stop. Press **Generate** for full quality. **Export** always builds at full quality first.
+
+### Great provinces
+The **Great provinces** section adds up to three planet-scale layers to any world:
+- **Filament belts:** Venus-style broad bright zones laced with bright ridge filaments.
+- **Streaky provinces:** Mars-style dark regions, wind-stretched, with dense detail inside and along their ragged edges.
+- **Regions:** plain soft-edged provinces.
+
+Each layer has its own colour (the Province 1–3 palette entries), coverage, size, interior and edge detail,
+edge brightness and wind stretch.
+
 ### Node editor (remix and recolour)
 Press **◈ Nodes** in the bar under the globe. A Blender-style panel opens under the preview.
 Changes re-apply in about a second, without regenerating the planet.
