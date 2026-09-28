@@ -120,6 +120,20 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
     float fH = fr(uHillsScale);
     h += uHillsAmp * mix(uLowRough, 1.0, hi) * erodedFbm(p * fH + SO * 1.3, octaves(fH, uTex), 2.0, 0.5, uErode);
 ` },
+    provinces: { on: (U) => U.pvOn, code: String.raw`
+    for (int i = 0; i < L(3); i++) {             // detail concentrated in great provinces and along their edges
+      vec3 pv = provinceAt(i, p, uR, uTex, SO);
+      if (pv.x + pv.z <= 0.001) continue;
+      vec4 B = uPv1[i];
+      float fD = fr(uPv0[i].z * 0.02);
+      int oc = octaves(fD, uTex);
+      float det;
+      if (int(uPv0[i].x + 0.5) == 2) det = 0.9 * pv.y + 0.45 * (ridgedEroded(p * fD * 1.5 + SO * float(i + 5), oc, 2.1, 0.55, 1.0) - 0.3);
+      else det = ridgedEroded(p * fD + SO * float(i + 5), oc, 2.1, 0.58, 1.3) - 0.3 + 0.35 * erodedFbm(p * fD * 3.0 - SO, max(1, oc - 1), 2.0, 0.55, 2.0);
+      h += B.x * pv.x * det;
+      h += B.y * pv.z * (ridged(p * fD * 2.0 + SO * 3.1, max(1, oc - 1), 2.1, 0.6) - 0.3);
+    }
+` },
     montes: { on: (U) => U.uMontesAmp > 0, code: String.raw`
     { float fM = fr(uMontesScale);
       float mask = sstep(1.0 - uMontesCover, 1.0 - uMontesCover + 0.25, 0.5 + 0.6 * fbm(p * 4.0 + SO * 0.7, 4));
@@ -549,7 +563,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
   };
 
   // Passes: feature groups sharing one small shader. Heavy features get a pass of their own.
-  const STAGE0 = [['base', 'montes', 'rubble'], ['scarps'], ['tesserae', 'shields', 'blocks'], ['oldCraters'], ['list0', 'mare', 'wrinkle']];
+  const STAGE0 = [['base', 'montes', 'rubble'], ['provinces'], ['scarps'], ['tesserae', 'shields', 'blocks'], ['oldCraters'], ['list0', 'mare', 'wrinkle']];
   const STAGE1 = [['texture'], ['lanes'], ['lineaeNet'], ['craters'], ['list1'], ['flows', 'cracks'], ['grooves', 'chaos', 'canyonNet'], ['paterae'], ['dunes', 'terraces', 'lava', 'caps']];
 
   function passSource(names) {
@@ -593,6 +607,21 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
     return out.slice(0, MAXF);
   }
 
+  // great-province layers (shared with the colour stage)
+  function provinceUniforms(P) {
+    const a = new Float32Array(12), b = new Float32Array(12);
+    let on = false;
+    for (let k = 0; k < 3; k++) {
+      const g = (x, d = 0) => (P['pv' + (k + 1) + x] ?? d);
+      const st = +g('Style');
+      if (st > 0) on = true;
+      a.set([st, +g('Cover', 0.3), +g('Size', 1500), +g('Jag', 1)], k * 4);
+      b.set([+g('Detail'), +g('EdgeDetail'), +g('Stretch'), +g('Seed', k + 1)], k * 4);
+    }
+    return { uPv0: a, uPv1: b, pvOn: on };
+  }
+  S.provinceUniforms = provinceUniforms;
+
   function uniforms(P, ctx) {
     const f = makeFeatures(P, ctx.R, ctx.seed);
     const a = new Float32Array(MAXF * 4), b = new Float32Array(MAXF * 4);
@@ -622,6 +651,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       uDunes: n(P.dunes), uTerrace: n(P.terraces), uMare: n(P.maria), uMareLevel: n(P.mareLevel, -1500),
       uLavaLevel: P.lavaSea ? n(P.lavaLevel, -500) : -1e9, uLavaCracks: n(P.lavaCracks),
       uScarpAmp: n(P.scarps), uScarpScale: n(P.scarpScale, 600), uScarpLip: n(P.scarpLip, 0.3), uRubble: n(P.rubble), uMicro: n(P.microRelief), uUnitScale: n(P.unitScale, 250), uJag: n(P.edgeJag, 1), uFurrow: n(P.furrows), uPalimp: n(P.palimpsests), uPateraFlows: n(P.pateraFlows), uSecondYoung: n(P.youngSecondary),
+      ...provinceUniforms(P),
       uCapH: P.iceCaps ? n(P.capHeight, 2500) : 0, uCapLat: Math.sin((90 - n(P.capSize, 8)) * Math.PI / 180),
     };
   }

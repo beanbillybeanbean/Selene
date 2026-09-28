@@ -32,8 +32,9 @@
     // palette
     const pal = document.createElement('div');
     pal.className = 'pal';
-    for (const k of Object.keys(P.colors || {})) {
-      if (P.model !== 'terran' && !S.WORLD_COLORS_USED.includes(k)) continue;
+    const keys = P.model === 'terran' ? Object.keys(P.colors || {}) : S.WORLD_COLORS_USED;
+    for (const k of keys) {
+      if (!P.colors[k]) P.colors[k] = S.Surface.defaultColor(k, P.colors);
       const c = document.createElement('input');
       c.type = 'color'; c.value = P.colors[k];
       c.oninput = () => { P.colors[k] = c.value; };

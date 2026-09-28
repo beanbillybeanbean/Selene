@@ -180,5 +180,44 @@ float ejectaBright(float d, float ang, float fresh, float seedf) {
   rays *= 0.55 + 0.45 * snoise(vec3(d * 1.3, cs * 9.0 + seedf));
   return fresh * max(halo * 0.85, rays * 1.1);
 }
+
+// ---------------------------------------------------------------- great provinces
+// Up to three planet-scale province layers that can be mixed into any world:
+//   style 1 = regions (soft-edged albedo/terrain provinces), 2 = filament belts (Venus-style broad
+//   bright zones laced with ridge-belt filaments), 3 = streaky provinces (Mars-style dark regions,
+//   wind-stretched, ragged streaky edges).
+uniform vec4 uPv0[3];   // style, coverage 0..1, size km, edge raggedness
+uniform vec4 uPv1[3];   // interior detail m, edge detail m, wind stretch, seed
+// x = mask, y = filaments / streak texture, z = edge band
+vec3 provinceAt(int i, vec3 p, float R, float tex, vec3 so) {
+  vec4 A = uPv0[i], B = uPv1[i];
+  int st = int(A.x + 0.5);
+  if (st == 0) return vec3(0.0);
+  vec3 s2 = so + seedOff(B.w * 13.0 + float(i) * 7.0 + 1.0);
+  float f = R / (max(A.z, 1.0) * 1000.0);
+  vec3 q = p;
+  float stretch = st == 3 ? max(B.z, 0.5) : B.z;
+  if (stretch > 0.0) { vec3 e = eastOf(p); q = p - e * dot(p, e) * stretch * 0.8; }
+  vec3 w = q * f + s2;
+  float v = warped(w, 2, 0.7) + 0.08 * fbm(w * 3.0, 4) + A.w * 0.06 * jag(p, f * 12.0, tex);
+  float thr = 0.3 - 0.6 * A.y;
+  float ew = st == 3 ? 0.09 : 0.05;
+  float fil = 0.0;
+  if (st == 3) {                                         // streaks break up the edge
+    vec3 ws = q * f * 7.0 - s2;
+    float sk = fbm(ws, 5, 2.1, 0.6);
+    v += 0.06 * sk;
+    fil = sstep(-0.1, 0.4, sk);
+  }
+  float mask = sstep(thr - ew, thr + ew, v);
+  float edge = exp(-sq((v - thr) / (ew * 3.0)));
+  if (st == 2) {                                         // broad soft glow laced with filaments
+    float r1 = ridged(w * 2.3 + 3.0, 5, 2.1, 0.55), r2 = ridged(w * 5.5 - 7.0, 4, 2.1, 0.5);
+    float core = sstep(thr - 0.22, thr + 0.22, v);
+    fil = (sstep(0.52, 0.8, r1) * 0.9 + sstep(0.55, 0.85, r2) * 0.6) * core;
+    mask = core;
+  }
+  return vec3(mask, fil, edge);
+}
 `;
 })();

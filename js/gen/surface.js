@@ -11,7 +11,7 @@
   'use strict';
   const S = (window.Selene = window.Selene || {});
 
-  const WORLD_COLORS = ['low', 'high', 'alt', 'alt2', 'polar', 'hemi', 'cliff', 'dark', 'second', 'bright', 'ice', 'lava', 'rough'];
+  const WORLD_COLORS = ['low', 'high', 'alt', 'alt2', 'polar', 'hemi', 'cliff', 'dark', 'second', 'bright', 'ice', 'lava', 'rough', 'prov1', 'prov2', 'prov3'];
 
   const FS = String.raw`
 //#include planet
@@ -23,7 +23,8 @@ uniform vec3 uDeep, uMid, uShelf, uReef, uSeaIce, uSand, uRed, uDarkRock, uPale,
              uForestT, uForestTr, uForestB, uTundra, uRock, uSnow;
 uniform float uVegK, uSnowBias, uRiverK;
 // world palette + controls
-uniform vec3 uC[13];
+uniform vec3 uC[16];
+uniform vec3 uPvC[3]; uniform vec4 uPvK[3];   // province colour; x colour strength, y filament brightness, z edge darkening
 uniform float uStreak, uStreakTex, uRoughK, uRoughDark, uRoughMean, uRel2K, uHueLock;
 uniform float uPolarSide;
 uniform float uHeightK, uColorDist, uRegional, uRegScale, uRegTopo, uRegional2, uPolarK, uPolarLat, uHemiK;
@@ -112,6 +113,16 @@ void main() {
     c = mix(c, uC[2], frayed(sstep(-0.3, 0.35, reg), jA, uFray) * uRegional);
     float reg2 = warped(ds * uRegScale * 1.3 - so * 2.3, 3, 0.45) + 0.16 * fbm(ds * uRegScale * 7.0 - so, 5) - 0.08 * dist;
     c = mix(c, uC[3], frayed(sstep(-0.1, 0.4, reg2), jC, uFray) * uRegional2);
+    // great provinces (after regional albedo so they stay the dominant large features)
+    { vec3 pso = seedOff(uLSeed);
+      for (int i = 0; i < L(3); i++) {
+        if (uPv0[i].x < 0.5) continue;
+        vec3 pv = provinceAt(i, p, uR, uTex, pso);
+        vec4 K = uPvK[i];
+        float amt = sat(pv.x * K.x + pv.y * K.y);
+        c = mix(c, uPvC[i], amt);
+        c *= 1.0 + K.z * 0.25 * pv.z * (jA * 0.5 + 0.5);
+      } }
     // dust settles in lows (or highs when negative)
     c = mix(c, uC[2], sat(uDustLow * (0.5 - hn) * 2.0) * 0.6);
     // roughness: rough ground (blocky, fractured, fresh lava) takes the rough colour, smooth plains darken
@@ -179,6 +190,8 @@ void main() {
   // |height − smoothed height|: raw roughness, averaged down later
   const ABSHP = `uniform sampler2DArray uH, uHs; out vec4 o; void main() { o = vec4(abs(at(uH).r - sampleDirCubic(uHs, cellDir()))); }`;
 
+  // colours a preset may not define
+  function defaultColor(k, C) { return k === 'rough' ? (C.high || '#808080') : k === 'prov1' ? (C.alt || '#9a8a78') : k === 'prov2' ? (C.dark || '#5a4a40') : k === 'prov3' ? (C.bright || '#c8b8a0') : '#808080'; }
   const hexLin = (hex) => {
     const v = parseInt(String(hex).replace('#', ''), 16);
     const s = [(v >> 16) & 255, (v >> 8) & 255, v & 255].map((x) => x / 255);
@@ -191,8 +204,8 @@ void main() {
     const C = P.colors || {};
     const U = {};
     if (P.model === 'terran') for (const k in C) U['u' + k[0].toUpperCase() + k.slice(1)] = hexLin(C[k]);
-    const arr = new Float32Array(39);
-    WORLD_COLORS.forEach((k, i) => arr.set(hexLin(C[k] || (k === 'rough' ? (C.high || '#808080') : '#808080')), i * 3));
+    const arr = new Float32Array(48);
+    WORLD_COLORS.forEach((k, i) => arr.set(hexLin(C[k] || defaultColor(k, C)), i * 3));
     const n = (v, d = 0) => (v === undefined || v === null ? d : +v);
     const out = gpu.field(ctx.N, 'rgba8', 'albedo'), em = gpu.field(ctx.N, 'rgba8', 'emission');
     // coarse copy of the height (1/8 resolution) for the local-relief tone
@@ -222,11 +235,14 @@ void main() {
       uEmissive: P.emissive ? 1 : 0, uHb: Hb, uLSeed: (ctx.seed % 10007) + 0.5, uUnitScale: n(P.unitScale, 250), uUnitTone: P.microRelief > 0 ? n(P.unitTone, 1) : 0,
       uFray: n(P.colorFray, 0.8), uRelK: n(P.reliefColor, 0.6), uRelScale: Math.max(50, ((ctx.hmax ?? 5000) - (ctx.hmin ?? -5000)) * 0.03), uTex: Math.PI / 2 / ctx.N, uMottle: n(P.colorVariation, 1), uDustLow: n(P.dustInLows),
       uHq: Hq, uH16: H16, uRough: rough, uRoughMean: rmean, uRoughK: n(P.roughColor), uRoughDark: n(P.smoothDark),
+      ...(() => { const pc = new Float32Array(9), pk = new Float32Array(12);
+        for (let k = 0; k < 3; k++) { pc.set(hexLin(C['prov' + (k + 1)] || '#808080'), k * 3); pk.set([n(P['pv' + (k + 1) + 'Colour'], 0.7), n(P['pv' + (k + 1) + 'Fil'], 0.6), n(P['pv' + (k + 1) + 'EdgeTone'], 0), 0], k * 4); }
+        return { ...S.provinceUniforms(P), uPvC: pc, uPvK: pk }; })(),
       uStreak: n(P.windStreaks), uStreakTex: n(P.streakTexture), uRel2K: n(P.broadRelief), uHueLock: n(P.hueLock),
     }, { progress: (f) => report('Painting the surface', 0.95 + 0.04 * f) });
     gpu.free(Hb); gpu.free(Hq); gpu.free(H16); gpu.free(rough);
     return { albedo: out, emission: em };
   }
 
-  S.Surface = { run, hexLin, WORLD_COLORS };
+  S.Surface = { run, hexLin, WORLD_COLORS, defaultColor };
 })();
