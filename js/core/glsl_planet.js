@@ -155,13 +155,14 @@ float craterProfile(float d, float Dkm, float Dt, float fresh, float az, float r
       v += peak * exp(-sq(d / (0.1 + 0.05 * rnd)));
       v += ring * exp(-sq((d - floorR * 0.55) / 0.05));
     }
-    // degraded craters are infilled: smooth, shallow dish
-    float dish = -depth * 0.8 * (1.0 - d * d) * (1.0 - d * d) + rim * d * d;
+    // degraded craters are infilled and shallow, but keep a flat floor, a defined wall and a low, broken rim
+    float dish = -depth * 0.65 * sstep(1.0, 0.5, d) + rim * 0.7 * (0.65 + 0.35 * az) * exp(-sq((d - 0.97) / 0.12)) + rim * 0.15 * exp(-sq((d - 1.0) / 0.5));
     v = mix(dish, v, sstep(0.0, 0.7, fresh));
   } else {
     // rim flank and continuous ejecta blanket (thickness ~ r^-3)
     float ej = rim * pow(d, -3.0) * sstep(3.2, 1.6, d);
-    v = mix(rim * exp(-sq((d - 1.0) / 0.35)) * 0.8, ej, sstep(0.0, 0.6, fresh));
+    float oldRim = rim * 0.7 * (0.65 + 0.35 * az) * exp(-sq((d - 0.97) / 0.12)) + rim * 0.15 * exp(-sq((d - 1.0) / 0.5));
+    v = mix(oldRim, ej, sstep(0.0, 0.6, fresh));
   }
   return v;
 }

@@ -40,7 +40,7 @@ uniform float uGrooveAmp, uGrooveScale, uGrooveCover, uGroovePatch;
 uniform float uChaosAmp, uChaosCover, uChaosScale;
 uniform float uTessAmp, uTessCover, uWrinkle, uShieldDens, uShieldAmp;
 uniform float uPateraDens, uPateraAmp, uMtnAmp, uMtnCover;
-uniform float uPlains, uPvDunes;
+uniform float uPlains, uPvDunes, uFine;
 uniform float uDunes, uTerrace, uMare, uMareLevel, uLavaLevel, uLavaCracks;
 uniform float uCapH, uCapLat;
 uniform float uScarpAmp, uScarpScale, uScarpLip, uRubble;
@@ -130,6 +130,9 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
     if (kscarp > 0.0) { Cell kb = cellular(p * fr(90.0) + SO, 17u); h += kscarp * (uHighH - uLowH) * 0.25 * sstep(0.45, 0.2, kb.f1) * (hi < 0.5 ? 1.0 : -0.5); }
     float fH = fr(uHillsScale);
     h += uHillsAmp * mix(uLowRough, 1.0, hi) * erodedFbm(p * fH + SO * 1.3, octaves(fH, uTex), 2.0, 0.5, uErode);
+    // fine relief everywhere: a rough (gain 0.62) spectrum from a third of the hill size down to the texel,
+    // so no plateau or plain is ever smooth at close range
+    if (uFine > 0.0) { float fF = fr(uHillsScale * 0.33); h += uFine * (0.7 + 0.3 * hi) * erodedFbm(p * fF + SO * 2.7, octaves(fF, uTex), 2.0, 0.62, 1.2); }
 ` },
     provinces: { on: (U) => U.pvOn, code: String.raw`
     for (int i = 0; i < L(3); i++) {             // detail concentrated in great provinces and along their edges
@@ -728,7 +731,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       uChaosAmp: n(P.chaos), uChaosCover: n(P.chaosCover, 0.15), uChaosScale: n(P.chaosBlock, 30),
       uTessAmp: n(P.tesserae), uTessCover: n(P.tesseraeCover, 0.15), uWrinkle: n(P.wrinkleRidges), uShieldDens: n(P.shieldFields), uShieldAmp: n(P.shieldHeight, 800),
       uPateraDens: n(P.paterae) / 200, uPateraAmp: n(P.pateraDepth, 800), uMtnAmp: n(P.blockMountains), uMtnCover: n(P.blockCover, 0.08),
-      uDunes: n(P.dunes), uTerrace: n(P.terraces), uMare: n(P.maria), uPlains: n(P.plainsRelief, 350), uMareLevel: n(P.mareLevel, -1500),
+      uDunes: n(P.dunes), uTerrace: n(P.terraces), uMare: n(P.maria), uPlains: n(P.plainsRelief, 350), uFine: n(P.fineRelief, 350), uMareLevel: n(P.mareLevel, -1500),
       uLavaLevel: P.lavaSea ? n(P.lavaLevel, -500) : -1e9, uLavaCracks: n(P.lavaCracks),
       uScarpAmp: n(P.scarps), uScarpScale: n(P.scarpScale, 600), uScarpLip: n(P.scarpLip, 0.3), uRubble: n(P.rubble), uMicro: n(P.microRelief), uUnitScale: n(P.unitScale, 250), uJag: n(P.edgeJag, 1), uFurrow: n(P.furrows), uPalimp: n(P.palimpsests), uPateraFlows: n(P.pateraFlows), uSecondYoung: n(P.youngSecondary),
       uEqRidge: n(P.eqRidge), uEqWidth: n(P.eqRidgeWidth, 80), uEqTilt: n(P.eqTilt), uEqCover: n(P.eqRidgeCover, 0.8), uEqBand: n(P.eqBand), uEqBandW: n(P.eqBandWidth, 250), uEqBandCh: Math.round(n(P.eqBandMaterial)),

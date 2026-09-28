@@ -65,6 +65,11 @@ These are in the **Fractures & ice** section.
   beyond the rims, so it looks painted on while still following the real relief.
 - **Dimples:** fields of rimmed pits (Callisto and Triton style knobby, pitted ground).
 
+### Fine relief
+**Fine relief everywhere** (Detail section) adds rough small-scale relief to every surface, from about a third of the
+hill size down to a single texel. Plateaus and plains are then never smooth up close, in the height map or in KSP.
+Old, degraded craters keep a flat floor, a defined wall and a low, broken rim instead of fading into soft dishes.
+
 ### Flooded plains
 Maria, lava plains and ice basins are never perfectly flat. **Relief kept on flooded plains** (in the Craters section)
 lets buried craters show through as ghost rings, and adds low swells and a fine flow texture.
