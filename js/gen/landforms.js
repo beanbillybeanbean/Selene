@@ -17,7 +17,7 @@
   const MAXF = 64;
 
   // feature types in the list
-  const F = { BASIN: 1, SHIELD: 2, RAYED: 3, LINEA: 4, PLUME: 5, CORONA: 6, PATERA: 7, DOME: 9, CANYON: 10, STRIPE: 11 };
+  const F = { BASIN: 1, SHIELD: 2, RAYED: 3, LINEA: 4, PLUME: 5, CORONA: 6, PATERA: 7, DOME: 9, CANYON: 10, STRIPE: 11, CHASMA: 12 };
 
 
   // ---------------------------------------------------------------- GLSL
@@ -41,6 +41,8 @@ uniform float uChaosAmp, uChaosCover, uChaosScale;
 uniform float uTessAmp, uTessCover, uWrinkle, uShieldDens, uShieldAmp;
 uniform float uPateraDens, uPateraAmp, uMtnAmp, uMtnCover;
 uniform float uPlains, uPvDunes, uFine;
+uniform float uChDepth, uChIslands, uChFlow, uChGraben, uChFloor, uChWall, uChLaby, uChChaos; uniform int uChFloorCh; uniform int uChOn;
+uniform vec4 uVT0[12], uVT1[12]; uniform int uVTn;
 uniform float uDunes, uTerrace, uMare, uMareLevel, uLavaLevel, uLavaCracks;
 uniform float uCapH, uCapLat;
 uniform float uScarpAmp, uScarpScale, uScarpLip, uRubble;
@@ -99,7 +101,23 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       float ang = azimuth(p, cd);
       float az = snoise(vec3(cos(ang) * 1.3, sin(ang) * 1.3, hh.x * 40.0 + float(o)));
       float d = dist / rr * (1.0 + 0.07 * az);
-      h += amp * craterProfile(d, Dkm, uDt, fresh, az, hh.y);
+      // shape variety: polygonal craters (straight wall segments along old fractures) and oblique,
+      // elongated impacts; complex craters on ice sometimes have a central pit instead of a peak
+      vec3 hs = hash33(cc, sd + 9u);
+      if (hs.x < 0.3 && Dkm > 6.0) {
+        float nS = 5.0 + floor(hs.y * 4.0), sec = 6.28318 / nS;
+        float ar = mod(ang + hs.z * 6.28318, sec) - 0.5 * sec;
+        d = mix(d, d * cos(ar) / cos(0.5 * sec), 0.8);
+      } else if (hs.x > 0.9) {
+        vec3 ce = eastOf(cd), cn = cross(cd, ce), dvv = p - cd;
+        float th = hs.y * 3.14159;
+        vec2 v2 = vec2(dot(dvv, ce), dot(dvv, cn));
+        v2 = vec2(cos(th) * v2.x + sin(th) * v2.y, -sin(th) * v2.x + cos(th) * v2.y);
+        d = length(vec2(v2.x / (1.25 + 0.4 * hs.z), v2.y)) / rr * (1.0 + 0.07 * az);
+      }
+      float cv = craterProfile(d, Dkm, uDt, fresh, az, hh.y);
+      if (hs.z > 0.8 && Dkm > uDt * 1.5) cv -= 120.0 * uDt * sstep(0.18, 0.08, d) * fresh;   // central pit
+      h += amp * cv;
       m.r = max(m.r, uEjecta * ejectaBright(d, ang, sstep(1.0 - uBrightFrac, 1.0 - uBrightFrac * 0.3, hash13(cc, sd + 5u)), hh.x * 97.0) * sstep(2.9, 1.8, d));
       m.b = max(m.b, uFloorDark * (1.0 - fresh) * sstep(0.8, 0.35, d) * sstep(4.0, 20.0, Dkm));
       // palimpsests: big old craters on ice relax into bright, flat, ragged discs
@@ -260,6 +278,156 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
     h += uWrinkle * pow(1.0 - abs(snoise(p * fr(120.0) + SO * 3.0)), 10.0) * (1.0 - m.b);
 ` },
     // ------------------------------------------------ stage 1
+    valles: { on: (U) => U.uVTn > 0, code: String.raw`
+    // Valles Marineris template, scalable: every trough is defined in system units (u = -1..1 west to east
+    // along the system, y = cross-track in trough half-widths), so the same layout works at any size.
+    for (int i = 0; i < uFCount; i++) {
+      vec4 A = uF[i], B = uFP[i];
+      if (int(B.x + 0.5) != 12) continue;
+      vec3 c = A.xyz; float r = A.w, W = B.z;          // system half-length, trough half-width (rad)
+      vec3 e = eastOf(c), n = cross(c, e);
+      vec3 tg = cos(B.y) * e + sin(B.y) * n;
+      vec3 ax = normalize(cross(c, tg));
+      float along = atan(dot(p, tg), dot(p, c));
+      float fi = float(i), Wkm = W * uR * 0.001;
+      float xs = dot(p, ax) - sin(B.w) + W * 0.6 * snoise(vec3(along / r * 1.3, fi, 1.0));
+      float u = along / r, y = xs / W, LW = r / W;
+      if (abs(u) > 1.35 || abs(y) > 11.0) continue;
+      float jA = jag(p + fi, fr(Wkm * 0.9), uTex), jB = jag(p - fi, fr(Wkm * 0.22), uTex), jC = jag(p + 2.0 * fi, fr(Wkm * 0.06), uTex);
+      // the rim is scalloped at every scale: big theatre-shaped alcoves, gullies, small notches
+      float alc = ridged(vec3(u * LW * 0.9, y * 0.35, fi), 3, 2.1, 0.55);
+      float edgeN = uJag * (0.22 * jA + 0.09 * jB + 0.045 * jC) + 0.12 * alc - 0.06;
+      // troughs blend through a soft minimum of their distances, so there are no seams where they meet
+      float ws = 1e-30, depW = 0.0, islW = 0.0;
+      for (int k = 0; k < uVTn; k++) {
+        vec4 S0 = uVT0[k], S1 = uVT1[k];
+        float tt = sat((u - S0.x) / max(S0.y - S0.x, 1e-3));
+        float yc = mix(S0.z, S0.w, tt) + 0.22 * snoise(vec3(u * 5.0, float(k), fi));
+        float wk = S1.x * (1.0 + 0.2 * snoise(vec3(u * 8.0, float(k) + 20.0, fi)));
+        float du = max(max(S0.x - u, u - S0.y), 0.0) * LW;          // rounded, ragged ends
+        float wg = exp(-8.0 * length(vec2(du, y - yc)) / wk);
+        ws += wg; depW += wg * S1.y; islW += wg * S1.z;
+      }
+      // Noctis Labyrinthus: a maze of intersecting grabens and pits at the western end
+      float blob = snoise(p * fr(Wkm * 5.0) + fi * 2.3) + 0.4 * snoise(p * fr(Wkm * 2.0) - fi);
+      float noct = uChLaby * sstep(0.0, 0.3, 1.0 - length(vec2((u + 0.84) / 0.32, (y - 0.4) / 4.2)) + 0.3 * blob + 0.12 * jA);
+      if (noct > 0.01) {
+        vec3 qn = p * fr(Wkm * 1.7) + fi * 7.0 + 0.25 * warpVec(p * fr(Wkm * 4.0), 2);
+        Cell cn = cellular(qn, 811u);
+        float qn1 = (cellEdge(cn, qn) + 0.06 * jB) / 0.26;
+        float qn2 = cn.id > 0.45 ? cn.f1 / 0.4 : 9.0;
+        float wg = exp(-8.0 * (min(qn1, qn2) + 1.2 * (1.0 - noct)));
+        ws += wg; depW += wg * 0.6;
+      }
+      // chaos where the eastern troughs end: the floor breaks into jumbled, tilted blocks
+      float chaosR = uChChaos * sstep(0.0, 0.3, 1.0 - length(vec2((u - 1.05) / 0.2, (y - 0.7) / 4.5)) - 0.3 * blob + 0.12 * jB);
+      float chaosB = 0.0;
+      if (chaosR > 0.01) {
+        vec3 qc = p * fr(Wkm * 0.5) + fi * 5.0;
+        Cell cb = cellular(qc, 919u);
+        chaosB = sstep(0.62, 0.42, cb.f1 + 0.12 * jB) * (0.35 + 0.55 * fract(cb.id * 7.31)) * chaosR;
+        float wg = exp(-8.0 * 1.4 * (1.0 - chaosR));
+        ws += wg; depW += wg * 0.75;
+      }
+      float q = -log(ws) / 8.0 + edgeN;
+      float dep = depW / ws, islK = islW / ws;
+      float best = sstep(1.0, 0.5, q);                    // 0 on the plateau, 1 on the floor
+      // interior layered deposits: bright mesas and mounds in the wide troughs
+      float ild = islK * uChIslands * sstep(0.22, 0.38, fbm(p * fr(Wkm * 1.7) + fi * 3.1, 4) + 0.07 * jB + 0.03 * jC) * sstep(0.7, 0.2, q);
+      float inside = best * (1.0 - ild) * (1.0 - chaosB);
+      // walls: sharp rim and steep upper cliffs, benches, then a gentler talus apron at the foot
+      float w1 = 1.0 - pow(1.0 - inside, 1.5);
+      float t3 = w1 * 3.0;
+      float prof = mix(w1, floor(t3) / 3.0 + sstep(0.7, 1.0, fract(t3)) / 3.0, 0.35);
+      float depth = uChDepth * dep * (0.85 + 0.2 * snoise(vec3(u * 3.0, fi, 9.0)));
+      // floor: hummocky, with landslide lobes grooved across their length
+      float sIn = max(0.5 - q, 0.0) / 0.5;                // 0 at the foot of the wall, 1 on the trough axis
+      float lobe = sstep(0.05, 0.45, snoise(p * fr(Wkm * 1.3) + fi * 1.7));
+      float reach = 0.5 * lobe + 0.01;
+      float slide = lobe * sstep(reach, reach * 0.3, sIn) * best;
+      float groove = pow(1.0 - abs(snoise(vec3(u * LW * 3.5, sIn * 1.5, fi))), 4.0);
+      float fH = fr(Wkm * 0.2);
+      float hum = erodedFbm(p * fH - fi, octaves(fH, uTex), 2.0, 0.6, 1.0);
+      float hFloor = 0.15 * h - depth + uChFlow * (0.5 * fbm(p * fr(Wkm * 0.5) - fi, 3) + 0.7 * hum + slide * (1.4 * (1.0 - sIn / reach) + 0.9 * groove));
+      h = mix(h, hFloor, prof);
+      h += depth * 0.04 * exp(-sq((q - 1.2) / 0.3)) * (1.0 - best);
+      // spur-and-gully walls: sharp ribs running down the slopes, gullies between them
+      float wallZ = sstep(0.02, 0.2, prof) * sstep(0.99, 0.8, prof);
+      float spur = ridged(vec3(u * LW * 4.0, q * 1.5, fi + 4.0), 4, 2.0, 0.55);
+      h -= depth * 0.1 * wallZ * (spur - 0.4);
+      // colour: layered wall strata (not a painted outline), bright layered deposits, dark floor sand
+      float bands = sstep(0.35, 0.65, fract(prof * 6.0 + 0.4 * jA + 0.2 * jB));
+      m.r = max(m.r, uChWall * wallZ * sstep(0.1, 0.35, prof) * (0.25 + 0.75 * bands) * (0.7 + 0.3 * spur));
+      m.r = max(m.r, 0.7 * uChWall * ild * best);
+      float fl = uChFloor * sstep(0.8, 0.98, prof) * (1.0 - 0.5 * slide) * (0.55 + 0.45 * sat(0.5 + fbm(p * fr(Wkm * 0.3), 4) + 0.5 * hum));
+      if (uChFloorCh == 0) m.r = max(m.r, fl); else if (uChFloorCh == 1) m.g = max(m.g, fl); else m.b = max(m.b, fl);
+      // fossae and pit-crater chains parallel to the system on the plateau either side
+      if (uChGraben > 0.0 && best < 0.99) {
+        float gp = (abs(y) - 6.2) / 0.85 + 0.35 * snoise(p * fr(Wkm * 2.5) + fi);
+        float gi = floor(gp);
+        float seg = sstep(-0.1, 0.3, snoise(vec3(u * LW * 0.25, gi, fi * 5.0)));
+        float bead = sstep(0.0, 0.3, snoise(vec3(u * LW * 0.08, gi + 9.0, fi)));   // some become pit chains
+        float gw = 0.09 + 0.04 * snoise(vec3(u * LW, gi, fi));
+        float line = sstep(gw + 0.04, gw, abs(fract(gp) - 0.5));
+        float pits = sstep(0.3, 0.15, length(vec2(fract(u * LW * 1.6 + gi * 0.37) - 0.5, (fract(gp) - 0.5) * 1.6)));
+        float gr = mix(line, pits, bead) * seg * step(0.0, gp) * sstep(4.5, 2.0, gp) * sstep(1.25, 0.8, abs(u)) * (1.0 - best);
+        h -= uChGraben * depth * 0.12 * gr;
+      }
+    }
+` },
+    chasmata: { on: (U) => U.uChOn > 0 && U.uVTn === 0, code: String.raw`
+    // Great canyon systems (Valles Marineris, Charon's chasmata): wide troughs with flat, resurfaced
+    // floors carrying their own flow texture and colour, scalloped terraced walls, remnant plateau islands,
+    // en-echelon parallel troughs and graben fields on the surrounding plateau.
+    for (int i = 0; i < uFCount; i++) {
+      vec4 A = uF[i], B = uFP[i];
+      if (int(B.x + 0.5) != 12) continue;
+      vec3 c = A.xyz; float r = A.w, W = B.z;         // half-length, half-width (rad)
+      vec3 e = eastOf(c), n = cross(c, e);
+      vec3 tg = cos(B.y) * e + sin(B.y) * n;
+      vec3 ax = normalize(cross(c, tg));
+      float along = atan(dot(p, tg), dot(p, c));
+      if (abs(along) > r * 1.25 + W * 6.0) continue;
+      float Wkm = W * uR * 0.001, fi = float(i);
+      float wob = W * (1.4 * snoise(vec3(along / W * 0.06, fi, 1.0)) + 0.35 * snoise(p * fr(Wkm * 1.5) + fi));
+      float xs = dot(p, ax) - sin(B.w) + wob;                        // signed cross-track distance
+      if (abs(xs) > W * 7.0) continue;
+      float endT = sat((r - abs(along)) / (r * 0.35));                 // tapering, splitting ends
+      float wv = (1.0 + 0.4 * snoise(vec3(along / W * 0.12, fi, 3.0)) + 0.18 * snoise(vec3(along / W * 0.5, fi, 7.0))) * mix(0.25, 1.0, sqrt(endT));
+      float ax1 = abs(xs) / (W * max(wv, 0.15));
+      // scalloped, fractal wall line: alcoves at several scales
+      float xe = ax1 + uJag * (0.2 * jag(p + fi, fr(Wkm * 0.9), uTex) + 0.06 * jag(p - fi, fr(Wkm * 0.2), uTex));
+      // remnant plateau islands (inselbergs / mesas) standing inside the trough
+      float isl = uChIslands * sstep(0.26, 0.4, fbm(p * fr(Wkm * 1.8) + fi * 3.1, 4) + 0.07 * jag(p, fr(Wkm * 0.3), uTex)) * sstep(0.9, 0.3, ax1);
+      xe = max(xe, isl * 1.35);
+      float inside = sstep(1.02, 0.78, xe) * sstep(0.0, 0.08, endT);
+      float t3 = inside * 3.0;
+      float prof = mix(inside, floor(t3) / 3.0 + sstep(0.62, 1.0, fract(t3)) / 3.0, 0.55);   // terraced walls
+      // resurfaced floor: subdued old relief, flow lineations parallel to the trough that swirl round islands
+      vec3 fq = vec3(along * uR / 1000.0 / (Wkm * 1.2), xs / W * 1.6, fi);
+      fq += 0.35 * warpVec(p * fr(Wkm * 0.7) + fi, 2);
+      float lin = ridged(vec3(fq.x * 2.5, fq.y * 14.0, fq.z), 5, 2.0, 0.55) - 0.35;
+      float swell = fbm(p * fr(Wkm * 0.5) - fi, 4);
+      float depth = uChDepth * (0.8 + 0.25 * snoise(vec3(along / W * 0.08, fi, 9.0))) * mix(0.6, 1.0, endT);
+      float hFloor = 0.2 * h - depth + uChFlow * (lin + 0.8 * swell);
+      h = mix(h, hFloor, prof);
+      h += depth * 0.05 * exp(-sq((xe - 1.2) / 0.3)) * (1.0 - inside);           // slightly raised rim flanks
+      // wall exposures (bright layered bands) and the floor's own material
+      float wallB = sstep(0.05, 0.3, prof) * sstep(0.97, 0.7, prof) * (0.6 + 0.4 * sstep(-0.2, 0.3, snoise(vec3(along / W * 2.0, prof * 6.0, fi))));
+      m.r = max(m.r, uChWall * wallB);
+      float fl = uChFloor * sstep(0.75, 0.97, prof) * (0.75 + 0.25 * sat(0.5 + lin + 0.3 * swell));
+      if (uChFloorCh == 0) m.r = max(m.r, fl); else if (uChFloorCh == 1) m.g = max(m.g, fl); else m.b = max(m.b, fl);
+      // graben fields: narrow flat-floored troughs parallel to the canyon on the plateau alongside
+      if (uChGraben > 0.0) {
+        float gp = (abs(xs) / W - 1.3) / 0.6 + 0.35 * snoise(p * fr(Wkm * 2.0) + fi);
+        float gi = floor(gp);
+        float seg = sstep(-0.05, 0.3, snoise(vec3(along / W * 0.7, gi, fi * 5.0)));
+        float gw = 0.1 + 0.05 * snoise(vec3(along / W * 2.0, gi, fi));
+        float gr = sstep(gw + 0.04, gw, abs(fract(gp) - 0.5)) * seg * sstep(5.5, 2.0, gp) * step(0.0, gp) * (1.0 - inside);
+        h -= uChGraben * depth * 0.12 * gr * endT;
+      }
+    }
+` },
     craters: { on: (U) => U.uCraterDens > 0 && U.uCraterOct > 0, def: 'USE_CRATERS', code: String.raw`
     craterField(p, uCraterDens, uCraterFresh, uCraterAmp, 2000u, mix(uLowCraters, 1.0, 0.5), true, h, m);
 ` },
@@ -634,7 +802,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
 
   // Passes: feature groups sharing one small shader. Heavy features get a pass of their own.
   const STAGE0 = [['base', 'montes', 'rubble'], ['provinces'], ['scarps'], ['tesserae', 'shields', 'blocks'], ['oldCraters'], ['list0', 'mare', 'wrinkle']];
-  const STAGE1 = [['texture'], ['lanes'], ['lineaeNet'], ['eqRidge', 'dimples'], ['craters'], ['list1'], ['flows', 'cracks'], ['grooves', 'chaos', 'canyonNet'], ['paterae'], ['dunes', 'pvDunes', 'terraces', 'lava', 'caps']];
+  const STAGE1 = [['texture'], ['lanes'], ['lineaeNet'], ['eqRidge', 'dimples'], ['chasmata'], ['valles'], ['craters'], ['list1'], ['flows', 'cracks'], ['grooves', 'chaos', 'canyonNet'], ['paterae'], ['dunes', 'pvDunes', 'terraces', 'lava', 'caps']];
 
   function passSource(names) {
     const defs = [...new Set(names.map((n) => BLOCKS[n].def).filter(Boolean))].map((d) => `#define ${d} 1`).join('\n');
@@ -684,7 +852,49 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
     }
     for (let i = 0; i < (P.plumes | 0); i++) out.push({ A: [...S.randDir(r), km(250 + 450 * r())], B: [F.PLUME, i < (P.redPlumes ?? 1) ? 0 : 1, 0.05 + 0.04 * r(), 0.5 + 0.5 * r()] });
     for (let i = 0; i < (P.bigPaterae | 0); i++) out.push({ A: [...S.randDir(r), km(60 + 90 * r())], B: [F.PATERA, 800 + 800 * r(), r() < 0.5 ? 0.9 : 0.3, 0] });
+    // great canyon systems: own rng so adding them never reshuffles the other features
+    const rc = S.rng(seed * 331 + 71);
+    for (let i = 0; i < (P.chasmata | 0); i++) {
+      const valles = (P.chasmaStyle | 0) === 1;
+      const W = km((P.chasmaWidth ?? 150) * (valles ? 1 : 0.8 + 0.4 * rc()) / 2), L = km((P.chasmaLength ?? 3000) * (valles ? 1 : 0.7 + 0.5 * rc())) / 2;
+      const f = arcFeature(rc, F.CHASMA, L, W, valles ? 0 : (rc() - 0.5) * 0.12);
+      if (valles && i === 0 && P.chasmaEquator) {              // lie along a line of latitude, west to east
+        const lon = rc() * Math.PI * 2, la = (P.chasmaLat || 0) * Math.PI / 180;
+        f.A = [Math.cos(la) * Math.cos(lon), Math.sin(la), Math.cos(la) * Math.sin(lon), L]; f.B[1] = 0;
+      }
+      out.unshift(f);
+      if (valles) continue;
+      for (let k = 0; k < (P.chasmaParallel | 0); k++) {          // smaller en-echelon trough alongside
+        const side = rc() < 0.5 ? -1 : 1;
+        const g = { A: [...f.A], B: [...f.B] };
+        g.A[3] = L * (0.35 + 0.3 * rc()); g.B[2] = W * (0.35 + 0.25 * rc());
+        g.B[3] = f.B[3] + side * W * (3.2 + 1.5 * k + rc());
+        out.unshift(g);
+      }
+    }
     return out.slice(0, MAXF);
+  }
+
+  // Valles Marineris layout, in system units. S0 = (u start, u end, y at start, y at end),
+  // S1 = (half-width, relative depth, interior-deposit amount, 0). North is +y.
+  const VALLES = [
+    [[-0.62, -0.17, 0.35, 0.0], [0.85, 0.85, 0.15, 0]],   // Ius
+    [[-0.6, -0.16, 2.3, 2.0], [0.5, 0.75, 0.0, 0]],       // Tithonium
+    [[-0.2, 0.1, 0.0, -0.1], [1.75, 1.0, 0.8, 0]],        // Melas
+    [[-0.21, 0.05, 2.1, 2.2], [1.35, 0.95, 0.9, 0]],      // Candor
+    [[-0.05, 0.1, 3.3, 3.1], [0.8, 0.9, 0.6, 0]],         // Ophir
+    [[-0.3, -0.13, 5.3, 5.2], [0.55, 0.8, 0.9, 0]],       // Hebes (closed)
+    [[0.29, 0.36, 5.4, 5.9], [0.5, 0.7, 0.3, 0]],         // Juventae (closed)
+    [[0.06, 0.72, -0.1, -0.7], [0.9, 0.95, 0.15, 0]],     // Coprates
+    [[0.68, 1.0, -0.7, -1.6], [1.5, 0.75, 0.3, 0]],       // Eos
+    [[0.7, 0.98, 0.1, 0.9], [1.25, 0.75, 0.4, 0]],        // Capri
+    [[0.74, 0.98, 1.4, 3.9], [0.95, 0.7, 0.4, 0]],        // Ganges
+  ];
+  function vallesUniforms(P) {
+    const a = new Float32Array(48), b = new Float32Array(48);
+    VALLES.forEach(([s0, s1], k) => { a.set(s0, k * 4); b.set(s1, k * 4); });
+    const on = (P.chasmata | 0) > 0 && (P.chasmaStyle | 0) === 1;
+    return { uVT0: a, uVT1: b, uVTn: on ? VALLES.length : 0, uChLaby: +(P.chasmaLabyrinth ?? 0.8), uChChaos: +(P.chasmaChaos ?? 0.8) };
   }
 
   // great-province layers (shared with the colour stage)
@@ -731,6 +941,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       uChaosAmp: n(P.chaos), uChaosCover: n(P.chaosCover, 0.15), uChaosScale: n(P.chaosBlock, 30),
       uTessAmp: n(P.tesserae), uTessCover: n(P.tesseraeCover, 0.15), uWrinkle: n(P.wrinkleRidges), uShieldDens: n(P.shieldFields), uShieldAmp: n(P.shieldHeight, 800),
       uPateraDens: n(P.paterae) / 200, uPateraAmp: n(P.pateraDepth, 800), uMtnAmp: n(P.blockMountains), uMtnCover: n(P.blockCover, 0.08),
+      ...vallesUniforms(P), uChOn: (P.chasmata | 0) > 0 ? 1 : 0, uChDepth: n(P.chasmaDepth, 5000), uChIslands: n(P.chasmaIslands, 0.5), uChFlow: n(P.chasmaFlow, 150), uChGraben: n(P.chasmaGraben, 0.5), uChFloor: n(P.chasmaFloor, 0.6), uChFloorCh: n(P.chasmaFloorMaterial, 2), uChWall: n(P.chasmaWall, 0.3),
       uDunes: n(P.dunes), uTerrace: n(P.terraces), uMare: n(P.maria), uPlains: n(P.plainsRelief, 350), uFine: n(P.fineRelief, 350), uMareLevel: n(P.mareLevel, -1500),
       uLavaLevel: P.lavaSea ? n(P.lavaLevel, -500) : -1e9, uLavaCracks: n(P.lavaCracks),
       uScarpAmp: n(P.scarps), uScarpScale: n(P.scarpScale, 600), uScarpLip: n(P.scarpLip, 0.3), uRubble: n(P.rubble), uMicro: n(P.microRelief), uUnitScale: n(P.unitScale, 250), uJag: n(P.edgeJag, 1), uFurrow: n(P.furrows), uPalimp: n(P.palimpsests), uPateraFlows: n(P.pateraFlows), uSecondYoung: n(P.youngSecondary),

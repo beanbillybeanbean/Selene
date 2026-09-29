@@ -4,7 +4,7 @@ Selene generates realistic, seamless planet maps for **KSP (Kopernicus)** and **
 16-bit height maps, colour (albedo) maps, normal maps and emission maps. It is built for rocky,
 icy and volcanic worlds. Every parameter is editable. The presets are:
 - **Rocky:** Mars, Venus, a Cracked world, the Moon, Mercury, a lava world, and a fractured exotic world.
-- **Icy:** Europa, Enceladus, Ganymede, Callisto, Charon, Pluto, Triton, Titan, and a Banded moon (dark crust, bright patches, a painted equatorial canyon and an equatorial ridge).
+- **Icy:** Europa, Enceladus, Ganymede, Callisto, Charon, Pluto, Triton, Titan, a Banded moon (dark crust, bright patches, a painted equatorial canyon and an equatorial ridge), and a Rift moon (a giant Valles Marineris-style canyon system on a grey icy moon).
 - **Volcanic:** Io.
 - **Earth-like:** Earth, a Desert world (no oceans), a Snowball world and an Ocean world (island arcs).
 
@@ -64,6 +64,26 @@ These are in the **Fractures & ice** section.
 - **Canyon band:** streaks the canyon floor and walls with a bright, dark or secondary deposit. The band reaches
   beyond the rims, so it looks painted on while still following the real relief.
 - **Dimples:** fields of rimmed pits (Callisto and Triton style knobby, pitted ground).
+
+### Chasmata: Valles Marineris at any size
+**Chasmata** (Fractures & ice) adds wide canyon systems. Two layouts are available:
+- **Valles Marineris system:** the full Martian layout, scaled by the length and trough width you set. From west to east:
+  - the Noctis Labyrinthus maze of grabens and pits;
+  - the parallel Ius and Tithonium troughs;
+  - the wide, merged Melas, Candor and Ophir troughs, with bright layered mesas;
+  - the closed Hebes and Juventae troughs to the north;
+  - the long Coprates trough;
+  - Eos, Capri and Ganges, breaking up into chaotic terrain.
+
+  All troughs share the same wall and floor style:
+  - Walls have a sharp rim, steep cliffs, benches, spur-and-gully ribs, scalloped alcoves at every scale, and layered colour bands.
+  - Floors are hummocky, with landslide lobes grooved across their length, and have their own colour.
+  - Fossae and pit-crater chains run parallel on the plateau either side.
+
+  **Run west to east** and **Latitude** place it. Mars uses it at real scale; the Rift moon uses it at giant scale.
+- **Simple trough + parallels:** a single scalloped trough with plateau islands, en-echelon parallel troughs and grabens.
+
+Craters also vary in shape: polygonal craters with straight wall segments, elongated oblique impacts, and central-pit craters.
 
 ### Fine relief
 **Fine relief everywhere** (Detail section) adds rough small-scale relief to every surface, from about a third of the
