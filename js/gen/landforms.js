@@ -299,7 +299,10 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       float jA = jag(p + fi, fr(Wkm * 0.9), uTex), jB = jag(p - fi, fr(Wkm * 0.22), uTex), jC = jag(p + 2.0 * fi, fr(Wkm * 0.06), uTex);
       // the rim is scalloped at every scale: big theatre-shaped alcoves, gullies, small notches
       float alc = ridged(vec3(u * LW * 0.9, y * 0.35, fi), 3, 2.1, 0.55);
-      float edgeN = uJag * (0.22 * jA + 0.09 * jB + 0.045 * jC) + 0.12 * alc - 0.06;
+      // spur-and-gully walls: ribs run straight down the walls; each gully cuts a notch into the rim,
+      // giving the chevron-scalloped plateau edge seen along Valles Marineris
+      float rib = ridged(vec3(u * LW * 2.6 + 0.5 * jA, y * 0.25, fi + 3.0), 3, 2.1, 0.5);
+      float edgeN = uJag * (0.18 * jA + 0.08 * jB + 0.04 * jC) + 0.08 * alc - 0.04 + 0.22 * (0.45 - rib);
       // troughs blend through a soft minimum of their distances, so there are no seams where they meet
       float ws = 1e-30, depW = 0.0, islW = 0.0;
       for (int k = 0; k < uVTn; k++) {
@@ -307,8 +310,10 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
         float tt = sat((u - S0.x) / max(S0.y - S0.x, 1e-3));
         float yc = mix(S0.z, S0.w, tt) + 0.22 * snoise(vec3(u * 5.0, float(k), fi));
         float wk = S1.x * (1.0 + 0.2 * snoise(vec3(u * 8.0, float(k) + 20.0, fi)));
-        float du = max(max(S0.x - u, u - S0.y), 0.0) * LW;          // rounded, ragged ends
-        float wg = exp(-8.0 * length(vec2(du, y - yc)) / wk);
+        float tip = min(u - S0.x, S0.y - u) * LW / max(S1.x, 0.1);  // troughs narrow toward their ends
+        wk *= mix(0.5, 1.0, sstep(0.0, 4.0, tip));
+        float du = max(max(S0.x - u, u - S0.y), 0.0) * LW;          // tapering, pointed ends
+        float wg = exp(-8.0 * (length(vec2(du * 0.5, y - yc)) + 0.8 * du) / wk);
         ws += wg; depW += wg * S1.y; islW += wg * S1.z;
       }
       // Noctis Labyrinthus: a maze of intersecting grabens and pits at the western end
@@ -348,34 +353,38 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       }
       float q = -log(ws) / 8.0 + edgeN;
       float dep = depW / ws, islK = islW / ws;
-      float best = sstep(1.0, 0.5, q);                    // 0 on the plateau, 1 on the floor
+      float wv = 0.38 + 0.2 * snoise(vec3(u * LW * 0.35, fi, 13.0));      // wall width varies: sheer cliffs to broad slumped slopes
+      float best = sstep(1.0, wv, q);                     // 0 on the plateau, 1 on the floor
       // interior layered deposits: bright mesas and mounds in the wide troughs
       float ild = islK * uChIslands * sstep(0.22, 0.38, fbm(p * fr(Wkm * 1.7) + fi * 3.1, 4) + 0.07 * jB + 0.03 * jC) * sstep(0.7, 0.2, q);
       float inside = best * (1.0 - ild) * (1.0 - chaosB);
       // walls: sharp rim and steep upper cliffs, benches, then a gentler talus apron at the foot
-      float w1 = 1.0 - pow(1.0 - inside, 1.5);
-      float t3 = w1 * 3.0;
-      float prof = mix(w1, floor(t3) / 3.0 + sstep(0.7, 1.0, fract(t3)) / 3.0, 0.35);
+      float w1 = 1.0 - pow(1.0 - inside, 1.7);
+      float t3 = w1 * 4.0;
+      float prof = mix(w1, floor(t3) / 4.0 + sstep(0.6, 1.0, fract(t3)) / 4.0, 0.12);
       float depth = uChDepth * dep * (0.85 + 0.2 * snoise(vec3(u * 3.0, fi, 9.0)));
       // floor: hummocky, with landslide lobes grooved across their length
-      float sIn = max(0.5 - q, 0.0) / 0.5;                // 0 at the foot of the wall, 1 on the trough axis
+      float sIn = max(wv - q, 0.0) / wv;                  // 0 at the foot of the wall, 1 on the trough axis
       float lobe = sstep(0.05, 0.45, snoise(p * fr(Wkm * 1.3) + fi * 1.7));
-      float reach = 0.5 * lobe + 0.01;
+      float reach = 0.85 * lobe + 0.01;
       float slide = lobe * sstep(reach, reach * 0.3, sIn) * best;
       float groove = pow(1.0 - abs(snoise(vec3(u * LW * 3.5, sIn * 1.5, fi))), 4.0);
       float fH = fr(Wkm * 0.2);
       float hum = erodedFbm(p * fH - fi, octaves(fH, uTex), 2.0, 0.6, 1.0);
-      float hFloor = 0.15 * h - depth + uChFlow * (0.5 * fbm(p * fr(Wkm * 0.5) - fi, 3) + 0.7 * hum + slide * (1.4 * (1.0 - sIn / reach) + 0.9 * groove));
+      float mounds = sstep(-0.02, 0.22, fbm(p * fr(Wkm * 0.8) + fi * 2.9, 4) + 0.1 * jB) * sstep(0.25, 0.7, sIn);   // eroded layered mounds on the floor
+      float hFloor = 0.15 * h - depth + uChFlow * (0.6 * fbm(p * fr(Wkm * 0.5) - fi, 3) + 1.1 * hum + slide * (2.2 * (1.0 - sIn / reach) + 1.2 * groove)) + depth * 0.25 * mounds * (0.7 + 0.3 * hum);
       h = mix(h, hFloor, prof);
       h += depth * 0.04 * exp(-sq((q - 1.2) / 0.3)) * (1.0 - best);
       // spur-and-gully walls: sharp ribs running down the slopes, gullies between them
       float wallZ = sstep(0.02, 0.2, prof) * sstep(0.99, 0.8, prof);
-      float spur = ridged(vec3(u * LW * 4.0, q * 1.5, fi + 4.0), 4, 2.0, 0.55);
-      h -= depth * 0.1 * wallZ * (spur - 0.4);
+      float spur = ridged(vec3(u * LW * 2.6 + 0.5 * jA, q * 0.8, fi + 3.0), 4, 2.1, 0.5);
+      float fine = ridged(vec3(u * LW * 9.0 + jB, q * 2.0, fi + 7.0), 3, 2.1, 0.5);
+      h += depth * wallZ * (0.3 * (spur - 0.45) + 0.1 * (fine - 0.45));
       // colour: layered wall strata (not a painted outline), bright layered deposits, dark floor sand
       float bands = sstep(0.35, 0.65, fract(prof * 6.0 + 0.4 * jA + 0.2 * jB));
       m.r = max(m.r, uChWall * wallZ * sstep(0.1, 0.35, prof) * (0.25 + 0.75 * bands) * (0.7 + 0.3 * spur));
-      m.r = max(m.r, 0.7 * uChWall * ild * best);
+      m.r = max(m.r, 0.7 * uChWall * max(ild, mounds * 0.8) * best);
+      m.r = max(m.r, 0.4 * uChWall * slide);                                     // fresh landslide debris is lighter
       float fl = uChFloor * sstep(0.8, 0.98, prof) * (1.0 - 0.5 * slide) * (0.55 + 0.45 * sat(0.5 + fbm(p * fr(Wkm * 0.3), 4) + 0.5 * hum));
       if (uChFloorCh == 0) m.r = max(m.r, fl); else if (uChFloorCh == 1) m.g = max(m.g, fl); else m.b = max(m.b, fl);
       // fossae and pit-crater chains parallel to the system on the plateau either side
@@ -400,22 +409,38 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       float Rkm = R * uR * 0.001;
       float d = length(lp) / R + 0.18 * snoise(p * fr(Rkm * 0.8) + 3.3) + uJag * (0.08 * jag(p, fr(Rkm * 0.25), uTex) + 0.03 * jag(p + 1.1, fr(Rkm * 0.06), uTex));
       if (dot(p, c) < cos(min(R * 2.2, 3.0))) d = 9.0;         // far side: the flat projection is only valid nearby
-      if (d < 1.6) {
-        float k = sstep(1.0, 0.9, d);                       // the ice surface ends at a ragged shoreline
+      if (d < 1.7) {
+        // the ice fills the lows of a broad, gentle basin up to a (swelling) level: the old terrain's
+        // relief is only subdued under it, higher ground pokes through as islands and mountain blocks,
+        // and toward the margin the ice thins into frost that lies only in hollows and valleys
+        // the level is set relative to the mean height of the surrounding terrain, so it works on any world
+        float ref = 0.0;
+        for (int j = 0; j < L(8); j++) { float a = float(j) * 0.785398; ref += sampleDir(uHin, normalize(c + (e * cos(a) + n * sin(a)) * R * 1.3)).r; }
+        ref /= 8.0;
+        float dish = sstep(1.35, 0.2, d);
+        float sw = fbm(p * fr(Rkm * 0.35) + 5.1, 4);
+        float hb = h - 1600.0 * dish;                                           // terrain with the basin dish
+        float hu = mix(hb, ref - 1600.0 + 0.35 * (hb - ref + 1600.0), sstep(0.9, 0.3, d)); // relief subdued under the core
+        float lvl = ref + uIS1.z + 220.0 * sw - 500.0 * sstep(0.6, 1.3, d);   // level falls away toward the margin
+        float thick = lvl - hu;                                                 // ice thickness (m), < 0 = bare ground
+        float reach = sstep(1.35, 0.85, d + 0.1 * jag(p + 4.1, fr(Rkm * 0.1), uTex));
+        float ice = sat(thick / 250.0) * reach;
+        // convection cells and pitted surface only where the ice is thick
         vec3 qc = p * fr(uIS1.y) + 0.3 * warpVec(p * fr(uIS1.y * 3.0), 2);
         Cell cc = cellular(qc, 1601u);
-        float trough = sstep(0.12, 0.03, cellEdge(cc, qc));   // cell boundaries: shallow troughs
-        float dome = 1.0 - sat(cc.f1 * 1.4);
-        float margin = sstep(0.55, 0.9, d);                  // cells fade out toward the margin: pitted, featureless ice
-        float pits = sstep(0.28, 0.18, cellular(p * fr(uIS1.y * 0.15) + 7.7, 1603u).f1) * margin;
-        float sw = fbm(p * fr(Rkm * 0.35) + 5.1, 4);              // the ice surface is never level: broad swells, flow bulges
-        float level = uIS1.z + 250.0 * sw + 140.0 * dome * (1.0 - margin) - 200.0 * trough * (1.0 - margin) - 120.0 * pits
-                    + 90.0 * erodedFbm(p * fr(uIS1.y * 0.3) - 2.2, octaves(fr(uIS1.y * 0.3), uTex), 2.0, 0.55, 1.0);
-        h = mix(h, level, k);
-        h += 0.45 * (uIS1.z - h) * sstep(1.45, 1.0, d) * (1.0 - k) * (0.6 + 0.4 * snoise(p * fr(Rkm * 0.2)));   // the rim slopes down into the basin, broken by valleys
-        m.a = max(m.a, k * uIS1.w * (0.85 + 0.15 * dome - 0.25 * trough * (1.0 - margin)));
-        m.g = max(m.g, k * 0.5 * trough * (1.0 - margin));       // dark debris collects in the troughs
-        m.b *= 1.0 - k; m.r *= 1.0 - 0.8 * k;                     // young ice: no craters, no ejecta
+        float cellK = sstep(250.0, 900.0, thick) * reach;
+        float trough = sstep(0.08, 0.015, cellEdge(cc, qc) + 0.03 * snoise(qc * 4.0)) * cellK * (0.5 + 0.5 * sstep(-0.4, 0.2, snoise(qc * 0.7 + 2.0)));
+        float dome = (1.0 - sat(cc.f1 * 1.4)) * cellK;
+        float pits = sstep(0.28, 0.16, cellular(p * fr(uIS1.y * 0.15) + 7.7, 1603u).f1) * sstep(900.0, 250.0, thick) * ice;
+        float surf = lvl + 50.0 * dome - 60.0 * trough - 40.0 * pits
+                   + 60.0 * erodedFbm(p * fr(uIS1.y * 0.3) - 2.2, octaves(fr(uIS1.y * 0.3), uTex), 2.0, 0.55, 1.0);
+        // glacier ice flows off the surrounding uplands into the basin: soft, smoothed edges
+        float hN = mix(hb, hu, reach);
+        h = max(hN, mix(hN, surf, ice));
+        m.a = max(m.a, uIS1.w * ice * (0.9 - 0.04 * trough + 0.06 * sw + 0.04 * fbm(p * fr(Rkm * 0.12) - 3.3, 4)));
+        m.g = max(m.g, 0.06 * trough);                                          // a little dark debris in the troughs
+        float young = sstep(0.2, 0.8, ice);
+        m.b *= 1.0 - young; m.r *= 1.0 - 0.8 * young;                           // young ice: no craters, no ejecta
       }
     }
 ` },
