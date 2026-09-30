@@ -99,9 +99,22 @@
   }
   function fillPresetMenu(select) {
     const sel = $('preset'); sel.innerHTML = '';
-    const g1 = document.createElement('optgroup'); g1.label = 'World types';
-    for (const [id, pr] of Object.entries(S.PRESETS)) g1.appendChild(new Option(pr.name, id));
-    sel.appendChild(g1);
+    const groups = {
+      'Solar System — planets': ['mars', 'venus', 'mercury', 'earth'],
+      'Solar System — moons': ['moon', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'enceladus', 'mimas', 'tethys', 'dione', 'iapetus', 'miranda', 'ariel', 'umbriel', 'triton', 'charon'],
+      'Dwarf planets & small worlds': ['pluto', 'ceres', 'vesta', 'eris', 'makemake', 'sedna'],
+      'Rocky & volcanic worlds': ['cracked', 'lava', 'exotic', 'hellworld', 'obsidian', 'carbon', 'sulfur', 'saltflats', 'dunesea', 'noachian', 'frozenmars'],
+      'Icy worlds': ['banded', 'rift', 'chaosmoon', 'grooved', 'cryovolcanic'],
+      'Earth-like worlds': ['desert', 'snowball', 'oceanworld', 'jungle', 'tundra'],
+    };
+    const used = new Set();
+    for (const [label, ids] of Object.entries(groups)) {
+      const g = document.createElement('optgroup'); g.label = label;
+      for (const id of ids) if (S.PRESETS[id]) { g.appendChild(new Option(S.PRESETS[id].name, id)); used.add(id); }
+      sel.appendChild(g);
+    }
+    const rest = Object.keys(S.PRESETS).filter((id) => !used.has(id));
+    if (rest.length) { const g = document.createElement('optgroup'); g.label = 'Other'; for (const id of rest) g.appendChild(new Option(S.PRESETS[id].name, id)); sel.appendChild(g); }
     const ups = Object.keys(userPresets()).sort((a, b) => a.localeCompare(b));
     if (ups.length) { const g2 = document.createElement('optgroup'); g2.label = 'My presets'; for (const n of ups) g2.appendChild(new Option('★ ' + n, 'user:' + n)); sel.appendChild(g2); }
     if (select) sel.value = select;

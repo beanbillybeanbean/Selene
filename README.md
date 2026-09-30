@@ -2,11 +2,18 @@
 
 Selene generates realistic, seamless planet maps for **KSP (Kopernicus)** and **Blender**:
 16-bit height maps, colour (albedo) maps, normal maps and emission maps. It is built for rocky,
-icy and volcanic worlds. Every parameter is editable. The presets are:
-- **Rocky:** Mars, Venus, a Cracked world, the Moon, Mercury, a lava world, and a fractured exotic world.
-- **Icy:** Europa, Enceladus, Ganymede, Callisto, Charon, Pluto, Triton, Titan, a Banded moon (dark crust, bright patches, a painted equatorial canyon and an equatorial ridge), and a Rift moon (a giant Valles Marineris-style canyon system on a grey icy moon).
-- **Volcanic:** Io.
-- **Earth-like:** Earth, a Desert world (no oceans), a Snowball world and an Ocean world (island arcs).
+icy and volcanic worlds. Every parameter is editable. There are 47 presets, grouped in the World type menu:
+- **Planets:** Mars (real layout: Tharsis, Olympus Mons, Valles Marineris, Hellas, Argyre), Venus, Mercury, Earth.
+- **Moons:** the Moon, Io, Europa, Ganymede, Callisto, Titan, Enceladus, Mimas, Tethys, Dione, Iapetus, Miranda,
+  Ariel, Umbriel, Triton, Charon.
+- **Dwarf planets and small worlds:** Pluto (with its heart-shaped ice plain), Ceres, Vesta, Eris, Makemake, and an
+  ultra-red Kuiper-belt world.
+- **Rocky and volcanic worlds:** the Cracked world, a lava world, a fractured exotic world, a scorched world,
+  an obsidian world, a carbon world, a sulfur world, a salt-flat world, a dune world, an ancient wet world, and an
+  ice-age red world.
+- **Icy worlds:** the Banded moon (dark crust, bright patches, a painted equatorial canyon and an equatorial ridge),
+  the Rift moon (a giant Valles Marineris system), a chaos moon, a grooved ice world and a cryovolcanic world.
+- **Earth-like worlds:** a Desert world (no oceans), a Snowball world, an Ocean world, a Jungle world and a Tundra world.
 
 Everything runs on your GPU in the browser. There is nothing to install.
 
@@ -55,6 +62,25 @@ Provinces are more than paint:
 - **Dune seas** fill it with wind-aligned dunes.
 - **Follow terrain** lets its material collect in hollows and basins and pull back from crests and cliffs.
   Its boundary then snakes along the relief instead of cutting across it like a stencil.
+- Every province edge varies along its length: a crisp contact in some places, a gradual fade in others.
+  There are detached fragments and holes, and the density varies inside. **Edge softness** sets how wide the fading
+  stretches are (Mars's albedo regions use a lot of it).
+- **Longitude bias** works like latitude bias. Use the two together to place a province, for example Pluto's dark
+  Cthulhu region beside its ice plain.
+
+### Real Mars layout
+**Real Mars layout** (Volcanism) places the big features where they are on Mars, scaled to your planet:
+- the Tharsis rise, dusted bright (**Dust on volcanic rises**);
+- Olympus Mons, the three Tharsis Montes and the low, vast Alba Mons;
+- the Valles Marineris system running east from Noctis Labyrinthus;
+- the Hellas and Argyre basins, with bright dust-filled floors (**Dust-filled basin floors**).
+
+### Ice-sheet basins
+**Ice-sheet basin** (Fractures & ice) is modelled on Pluto's Sputnik Planitia: a huge plain of soft, bright ice.
+- It has a ragged shoreline and broad swells.
+- The ice is split into convection cells whose troughs collect dark debris.
+- Its pitted margin fades into the surrounding uplands, which slope down into it.
+- It is younger than everything around it, so it has no craters.
 
 ### Equatorial ridges, painted canyons and pits
 These are in the **Fractures & ice** section.
@@ -79,6 +105,8 @@ These are in the **Fractures & ice** section.
   - Walls have a sharp rim, steep cliffs, benches, spur-and-gully ribs, scalloped alcoves at every scale, and layered colour bands.
   - Floors are hummocky, with landslide lobes grooved across their length, and have their own colour.
   - Fossae and pit-crater chains run parallel on the plateau either side.
+
+  **Side canyons** adds short tributary canyons with rounded heads, cutting back into the plateau from the walls.
 
   **Run west to east** and **Latitude** place it. Mars uses it at real scale; the Rift moon uses it at giant scale.
 - **Simple trough + parallels:** a single scalloped trough with plateau islands, en-echelon parallel troughs and grabens.

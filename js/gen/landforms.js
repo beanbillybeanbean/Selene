@@ -40,7 +40,8 @@ uniform float uGrooveAmp, uGrooveScale, uGrooveCover, uGroovePatch;
 uniform float uChaosAmp, uChaosCover, uChaosScale;
 uniform float uTessAmp, uTessCover, uWrinkle, uShieldDens, uShieldAmp;
 uniform float uPateraDens, uPateraAmp, uMtnAmp, uMtnCover;
-uniform float uPlains, uPvDunes, uFine;
+uniform float uPlains, uPvDunes, uFine, uBasinDust, uRiseDust, uChTrib;
+uniform vec4 uIS0, uIS1; // ice sheet: centre xyz + radius (rad); elongation, cell km, level m, brightness
 uniform float uChDepth, uChIslands, uChFlow, uChGraben, uChFloor, uChWall, uChLaby, uChChaos; uniform int uChFloorCh; uniform int uChOn;
 uniform vec4 uVT0[12], uVT1[12]; uniform int uVTn;
 uniform float uDunes, uTerrace, uMare, uMareLevel, uLavaLevel, uLavaCracks;
@@ -241,6 +242,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
         float ang = azimuth(p, c);
         float sculpt = depth * 0.08 * sstep(3.0, 1.2, d) * sstep(0.95, 1.2, d) * (0.5 + ridged(vec3(ang * 4.0, d * 3.0, float(i)), 3));
         h += bowl + rim + ring + sculpt;
+        if (uBasinDust > 0.0 && B.w <= 0.0) m.r = max(m.r, uBasinDust * sstep(1.05, 0.55, d + 0.12 * fbm(p * fr(r * uR * 0.0004) + float(i), 4)));   // dust-filled floor (Hellas)
         if (B.w > 0.0 && d < 1.15) {              // lava-flooded floor (mare)
           float ref = mix(uLowH, uHighH, sstep(-uTrans, uTrans, provAt(c)));
           float level = ref - depth * (1.0 - B.w) * 0.85 + 150.0 * fbm(p * 4.0 + float(i), 2);
@@ -261,6 +263,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       } else {                                  // broad volcanic rise (Tharsis). B = (type, height, 0, 0)
         if (d > 1.5) continue;
         h += B.y * sstep(1.5, 0.0, d) * (0.85 + 0.15 * fbm(p * 6.0 + SO, 3));
+        if (uRiseDust > 0.0) m.r = max(m.r, uRiseDust * sstep(1.2, 0.3, d + 0.2 * fbm(p * fr(r * uR * 0.0003) - float(i), 4)));   // dust-mantled bulge (Tharsis)
       }
     }
 ` },
@@ -320,7 +323,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
         ws += wg; depW += wg * 0.6;
       }
       // chaos where the eastern troughs end: the floor breaks into jumbled, tilted blocks
-      float chaosR = uChChaos * sstep(0.0, 0.3, 1.0 - length(vec2((u - 1.05) / 0.2, (y - 0.7) / 4.5)) - 0.3 * blob + 0.12 * jB);
+      float chaosR = uChChaos * sstep(0.0, 0.3, 1.0 - length(vec2((u - 1.03) / 0.12, (y - 0.5) / 3.0)) - 0.3 * blob + 0.12 * jB);
       float chaosB = 0.0;
       if (chaosR > 0.01) {
         vec3 qc = p * fr(Wkm * 0.5) + fi * 5.0;
@@ -328,6 +331,20 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
         chaosB = sstep(0.62, 0.42, cb.f1 + 0.12 * jB) * (0.35 + 0.55 * fract(cb.id * 7.31)) * chaosR;
         float wg = exp(-8.0 * 1.4 * (1.0 - chaosR));
         ws += wg; depW += wg * 0.75;
+      }
+      // tributary canyons: short theatre-headed side canyons cutting back into the plateau from the walls
+      float q0 = -log(ws) / 8.0;
+      if (uChTrib > 0.0 && q0 > 0.6 && q0 < 4.0) {
+        float bx0 = u * LW / 1.7 + 0.45 * snoise(vec3(q0 * 0.9, u * LW * 0.3, fi + 11.0));
+        float h0 = fract(sin(floor(bx0) * 12.9898 + fi * 78.233 + sign(y) * 5.1) * 43758.55);
+        float bx = bx0 + (h0 - 0.5) * 0.9 * (q0 - 1.0), bi = floor(bx);   // each branch leaves the wall at its own angle
+        float h1 = fract(sin(bi * 12.9898 + fi * 78.233 + sign(y) * 5.1) * 43758.55), h2 = fract(h1 * 91.7 + 0.31);
+        float blen = 0.3 + 1.5 * h2 * h2 * h2;
+        float dx = abs(fract(bx) - 0.5) * 1.7 + 0.15 * jB + 0.1 * jA;
+        float bw = 0.22 * (0.5 + 0.5 * sat(1.0 - (q0 - 1.0) / blen));
+        float qb = length(vec2(dx, max(q0 - 1.0 - blen, 0.0))) / bw;
+        float wg = step(1.0 - uChTrib * 0.6, h1) * exp(-8.0 * qb);
+        ws += wg; depW += wg * 0.55;
       }
       float q = -log(ws) / 8.0 + edgeN;
       float dep = depW / ws, islK = islW / ws;
@@ -372,6 +389,33 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
         float pits = sstep(0.3, 0.15, length(vec2(fract(u * LW * 1.6 + gi * 0.37) - 0.5, (fract(gp) - 0.5) * 1.6)));
         float gr = mix(line, pits, bead) * seg * step(0.0, gp) * sstep(4.5, 2.0, gp) * sstep(1.25, 0.8, abs(u)) * (1.0 - best);
         h -= uChGraben * depth * 0.12 * gr;
+      }
+    }
+` },
+    iceSheet: { on: (U) => U.uIS0[3] > 0, code: String.raw`
+    { // ice-sheet basin (Sputnik Planitia): a huge smooth plain of soft ice, broken into convection cells
+      vec3 c = uIS0.xyz; float R = uIS0.w;
+      vec3 e = eastOf(c), n = cross(c, e), v = p - c;
+      vec2 lp = vec2(dot(v, e) / uIS1.x, dot(v, n) * uIS1.x);
+      float Rkm = R * uR * 0.001;
+      float d = length(lp) / R + 0.18 * snoise(p * fr(Rkm * 0.8) + 3.3) + uJag * (0.08 * jag(p, fr(Rkm * 0.25), uTex) + 0.03 * jag(p + 1.1, fr(Rkm * 0.06), uTex));
+      if (dot(p, c) < cos(min(R * 2.2, 3.0))) d = 9.0;         // far side: the flat projection is only valid nearby
+      if (d < 1.6) {
+        float k = sstep(1.0, 0.9, d);                       // the ice surface ends at a ragged shoreline
+        vec3 qc = p * fr(uIS1.y) + 0.3 * warpVec(p * fr(uIS1.y * 3.0), 2);
+        Cell cc = cellular(qc, 1601u);
+        float trough = sstep(0.12, 0.03, cellEdge(cc, qc));   // cell boundaries: shallow troughs
+        float dome = 1.0 - sat(cc.f1 * 1.4);
+        float margin = sstep(0.55, 0.9, d);                  // cells fade out toward the margin: pitted, featureless ice
+        float pits = sstep(0.28, 0.18, cellular(p * fr(uIS1.y * 0.15) + 7.7, 1603u).f1) * margin;
+        float sw = fbm(p * fr(Rkm * 0.35) + 5.1, 4);              // the ice surface is never level: broad swells, flow bulges
+        float level = uIS1.z + 250.0 * sw + 140.0 * dome * (1.0 - margin) - 200.0 * trough * (1.0 - margin) - 120.0 * pits
+                    + 90.0 * erodedFbm(p * fr(uIS1.y * 0.3) - 2.2, octaves(fr(uIS1.y * 0.3), uTex), 2.0, 0.55, 1.0);
+        h = mix(h, level, k);
+        h += 0.45 * (uIS1.z - h) * sstep(1.45, 1.0, d) * (1.0 - k) * (0.6 + 0.4 * snoise(p * fr(Rkm * 0.2)));   // the rim slopes down into the basin, broken by valleys
+        m.a = max(m.a, k * uIS1.w * (0.85 + 0.15 * dome - 0.25 * trough * (1.0 - margin)));
+        m.g = max(m.g, k * 0.5 * trough * (1.0 - margin));       // dark debris collects in the troughs
+        m.b *= 1.0 - k; m.r *= 1.0 - 0.8 * k;                     // young ice: no craters, no ejecta
       }
     }
 ` },
@@ -802,7 +846,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
 
   // Passes: feature groups sharing one small shader. Heavy features get a pass of their own.
   const STAGE0 = [['base', 'montes', 'rubble'], ['provinces'], ['scarps'], ['tesserae', 'shields', 'blocks'], ['oldCraters'], ['list0', 'mare', 'wrinkle']];
-  const STAGE1 = [['texture'], ['lanes'], ['lineaeNet'], ['eqRidge', 'dimples'], ['chasmata'], ['valles'], ['craters'], ['list1'], ['flows', 'cracks'], ['grooves', 'chaos', 'canyonNet'], ['paterae'], ['dunes', 'pvDunes', 'terraces', 'lava', 'caps']];
+  const STAGE1 = [['texture'], ['lanes'], ['lineaeNet'], ['eqRidge', 'dimples'], ['chasmata'], ['valles'], ['craters'], ['list1'], ['flows', 'cracks'], ['grooves', 'chaos', 'canyonNet'], ['paterae'], ['iceSheet'], ['dunes', 'pvDunes', 'terraces', 'lava', 'caps']];
 
   function passSource(names) {
     const defs = [...new Set(names.map((n) => BLOCKS[n].def).filter(Boolean))].map((d) => `#define ${d} 1`).join('\n');
@@ -872,7 +916,28 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
         out.unshift(g);
       }
     }
+    if (P.tharsis) marsLayout(P, out);
     return out.slice(0, MAXF);
+  }
+  // Real-Mars layout for the big features, in angles (so it scales with the planet): Tharsis rise with
+  // Olympus and the three Tharsis Montes, Valles Marineris starting at Noctis Labyrinthus on the rise's
+  // east flank, Hellas and Argyre basins.
+  function marsLayout(P, out) {
+    const lon0 = P.tharsisLon ?? -113, c0 = S.latLonDir(0, lon0);
+    const e0 = S.vnorm([c0[2], 0, -c0[0]]), n0 = S.vcross(c0, e0);
+    const at = (xkm, ykm) => {
+      const x = xkm / 3389.5, y = ykm / 3389.5, d = Math.hypot(x, y) || 1e-9, s = Math.sin(d) / d;
+      return S.vnorm([0, 1, 2].map((k) => c0[k] * Math.cos(d) + (e0[k] * x + n0[k] * y) * s));
+    };
+    const shields = out.filter((f) => f.B[0] === F.SHIELD), domes = out.filter((f) => f.B[0] === F.DOME), basins = out.filter((f) => f.B[0] === F.BASIN);
+    const vpos = [[-1240, 1060], [-470, -530], [-60, 0], [480, 650], [200, 2300]];
+    shields.forEach((f, i) => { if (i < vpos.length) f.A = [...at(...vpos[i]), f.A[3]]; });
+    if (shields[4]) { shields[4].A[3] *= 2.2; shields[4].B[1] *= 0.25; }          // Alba Mons: vast, very low
+    if (domes[0]) domes[0].A = [...at(250, 150), domes[0].A[3]];
+    if (basins[0]) { basins[0].A = [...S.latLonDir(-42, lon0 + 183), 1150 / 3389.5]; basins[0].B[3] = 0; }   // Hellas
+    if (basins[1]) { basins[1].A = [...S.latLonDir(-50, lon0 + 70), 430 / 3389.5]; basins[1].B[3] = 0; }     // Argyre
+    const ch = out.find((f) => f.B[0] === F.CHASMA);
+    if (ch) { ch.A = [...at(770 + ch.A[3] * 3389.5 * 0.84, -470), ch.A[3]]; ch.B[1] = 0; ch.B[3] = 0; }
   }
 
   // Valles Marineris layout, in system units. S0 = (u start, u end, y at start, y at end),
@@ -897,9 +962,15 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
     return { uVT0: a, uVT1: b, uVTn: on ? VALLES.length : 0, uChLaby: +(P.chasmaLabyrinth ?? 0.8), uChChaos: +(P.chasmaChaos ?? 0.8) };
   }
 
+  function iceSheetUniforms(P, ctx) {
+    if (!P.iceSheet) return { uIS0: [0, 1, 0, 0], uIS1: [1, 50, 0, 0] };
+    const c = S.latLonDir(P.iceSheetLat ?? 20, P.iceSheetLon ?? 0);
+    return { uIS0: [...c, (P.iceSheetSize ?? 1000) * 500 / ctx.R], uIS1: [P.iceSheetStretch ?? 1.3, P.iceSheetCells ?? 30, P.iceSheetLevel ?? -2500, P.iceSheetBright ?? 0.9] };
+  }
+
   // great-province layers (shared with the colour stage)
   function provinceUniforms(P) {
-    const a = new Float32Array(12), b = new Float32Array(12), c = new Float32Array(12), d = new Float32Array(12);
+    const a = new Float32Array(12), b = new Float32Array(12), c = new Float32Array(12), d = new Float32Array(12), l = new Float32Array(12);
     let on = false, dunes = 0;
     for (let k = 0; k < 3; k++) {
       const g = (x, d = 0) => (P['pv' + (k + 1) + x] ?? d);
@@ -908,10 +979,11 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       a.set([st, +g('Cover', 0.3), +g('Size', 1500), +g('Jag', 1)], k * 4);
       b.set([+g('Detail'), +g('EdgeDetail'), +g('Stretch'), +g('Seed', k + 1)], k * 4);
       c.set([+g('LatC'), +g('LatW', 30), +g('LatBias'), +g('Variety', 0.6)], k * 4);
-      d.set([+g('Relief'), st > 0 ? +g('Dunes') : 0, +g('Follow'), 0], k * 4);
+      d.set([+g('Relief'), st > 0 ? +g('Dunes') : 0, +g('Follow'), +g('Soft')], k * 4);
+      l.set([+g('LonC'), +g('LonW', 40), +g('LonBias'), 0], k * 4);
       if (st > 0 && +g('Dunes') > 0) dunes = 1;
     }
-    return { uPv0: a, uPv1: b, uPv2: c, uPv3: d, pvOn: on, uPvDunes: dunes };
+    return { uPv0: a, uPv1: b, uPv2: c, uPv3: d, uPv4: l, pvOn: on, uPvDunes: dunes };
   }
   S.provinceUniforms = provinceUniforms;
 
@@ -942,7 +1014,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       uTessAmp: n(P.tesserae), uTessCover: n(P.tesseraeCover, 0.15), uWrinkle: n(P.wrinkleRidges), uShieldDens: n(P.shieldFields), uShieldAmp: n(P.shieldHeight, 800),
       uPateraDens: n(P.paterae) / 200, uPateraAmp: n(P.pateraDepth, 800), uMtnAmp: n(P.blockMountains), uMtnCover: n(P.blockCover, 0.08),
       ...vallesUniforms(P), uChOn: (P.chasmata | 0) > 0 ? 1 : 0, uChDepth: n(P.chasmaDepth, 5000), uChIslands: n(P.chasmaIslands, 0.5), uChFlow: n(P.chasmaFlow, 150), uChGraben: n(P.chasmaGraben, 0.5), uChFloor: n(P.chasmaFloor, 0.6), uChFloorCh: n(P.chasmaFloorMaterial, 2), uChWall: n(P.chasmaWall, 0.3),
-      uDunes: n(P.dunes), uTerrace: n(P.terraces), uMare: n(P.maria), uPlains: n(P.plainsRelief, 350), uFine: n(P.fineRelief, 350), uMareLevel: n(P.mareLevel, -1500),
+      uDunes: n(P.dunes), uTerrace: n(P.terraces), uMare: n(P.maria), uPlains: n(P.plainsRelief, 350), uChTrib: n(P.chasmaTributaries, 0.6), ...iceSheetUniforms(P, ctx), uBasinDust: n(P.basinDust), uRiseDust: n(P.riseDust), uFine: n(P.fineRelief, 350), uMareLevel: n(P.mareLevel, -1500),
       uLavaLevel: P.lavaSea ? n(P.lavaLevel, -500) : -1e9, uLavaCracks: n(P.lavaCracks),
       uScarpAmp: n(P.scarps), uScarpScale: n(P.scarpScale, 600), uScarpLip: n(P.scarpLip, 0.3), uRubble: n(P.rubble), uMicro: n(P.microRelief), uUnitScale: n(P.unitScale, 250), uJag: n(P.edgeJag, 1), uFurrow: n(P.furrows), uPalimp: n(P.palimpsests), uPateraFlows: n(P.pateraFlows), uSecondYoung: n(P.youngSecondary),
       uEqRidge: n(P.eqRidge), uEqWidth: n(P.eqRidgeWidth, 80), uEqTilt: n(P.eqTilt), uEqCover: n(P.eqRidgeCover, 0.8), uEqBand: n(P.eqBand), uEqBandW: n(P.eqBandWidth, 250), uEqBandCh: Math.round(n(P.eqBandMaterial)),

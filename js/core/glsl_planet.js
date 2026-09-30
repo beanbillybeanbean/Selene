@@ -190,13 +190,16 @@ float ejectaBright(float d, float ang, float fresh, float seedf) {
 uniform vec4 uPv0[3];   // style, coverage 0..1, size km, edge raggedness
 uniform vec4 uPv1[3];   // interior detail m, edge detail m, wind stretch, seed
 uniform vec4 uPv2[3];   // latitude centre (deg), latitude width (deg), latitude strength, patch variety
-uniform vec4 uPv3[3];   // relief (m, + raised / - sunken), dune height (m), follow terrain (0..1), unused
+uniform vec4 uPv3[3];   // relief (m, + raised / - sunken), dune height (m), follow terrain (0..1), edge softness (0..1)
+uniform vec4 uPv4[3];   // longitude centre (deg), longitude width (deg), longitude strength, unused
+float gSoft = 0.0;      // edge softness of the layer being evaluated (set by provinceAt)
+vec3 gLon = vec3(0.0);  // longitude focus of the layer being evaluated
 // x = mask, y = filaments / streak texture, z = edge band
 // gPv keeps the raw shape of the last call (value, threshold, edge width, patch intensity) so the colour
 // stage can move the boundary with the terrain
 vec4 gPv;
 vec3 provinceShape(vec4 A, vec4 B, vec4 Cq, float salt, vec3 p, float R, float tex, vec3 so);
-vec3 provinceAt(int i, vec3 p, float R, float tex, vec3 so) { return provinceShape(uPv0[i], uPv1[i], uPv2[i], float(i), p, R, tex, so); }
+vec3 provinceAt(int i, vec3 p, float R, float tex, vec3 so) { gSoft = uPv3[i].w; gLon = uPv4[i].xyz; vec3 r = provinceShape(uPv0[i], uPv1[i], uPv2[i], float(i), p, R, tex, so); gSoft = 0.0; gLon = vec3(0.0); return r; }
 // A = (style, coverage, size km, raggedness), B = (unused, unused, wind stretch, seed)
 vec3 provinceShape(vec4 A, vec4 B, vec4 Cq, float salt, vec3 p, float R, float tex, vec3 so) {
   int st = int(A.x + 0.5);
@@ -213,11 +216,12 @@ vec3 provinceShape(vec4 A, vec4 B, vec4 Cq, float salt, vec3 p, float R, float t
   float v = warped(w, 2, 0.7) + 0.08 * fbm(w * 3.0, 4) + A.w * (0.09 * jag(p + s2, f * 4.0, tex) + 0.04 * jag(p - s2, f * 20.0, tex));
   // latitude bias: concentrate the provinces in a band (e.g. Mars' dark southern low latitudes)
   if (Cq.z != 0.0) { float la = degrees(asin(clamp(p.y, -1.0, 1.0))); v += Cq.z * 0.7 * (exp(-sq((la - Cq.x) / max(Cq.y, 1.0))) - 0.45); }
+  if (gLon.z != 0.0) { float lo = degrees(atan(-p.z, p.x)); float dl = mod(lo - gLon.x + 540.0, 360.0) - 180.0; v += gLon.z * 0.7 * (exp(-sq(dl / max(gLon.y, 1.0))) - 0.45); }
   if (st == 4) {                                         // scattered patches: many ragged blobs of distinct terrain
     vec3 w4 = q * f * 3.0 + s2;
     float pv = fbm(w4 + 0.6 * warpVec(w4 * 0.5, 2), 5, 2.1, 0.55) + A.w * (0.07 * jag(p + s2, f * 8.0, tex) + 0.025 * jag(p, f * 30.0, tex)) + 0.5 * (v - 0.3) * Cq.z;
     float thr4 = 0.35 - 0.7 * A.y;
-    float ew4 = max(0.03, tex * f * 3.0);
+    float ew4 = max(0.03, tex * f * 3.0) + 0.12 * gSoft;
     float m4 = sstep(thr4 - ew4, thr4 + ew4, pv);
     // patch intensity drifts smoothly from patch to patch (no polygonal jumps)
     float vary = mix(1.0, 0.4 + 0.6 * sat(0.5 + 1.1 * fbm(w4 * 0.45 + 5.3, 3)), Cq.w);
@@ -225,7 +229,7 @@ vec3 provinceShape(vec4 A, vec4 B, vec4 Cq, float salt, vec3 p, float R, float t
     return vec3(m4 * vary, m4 * sstep(0.0, 0.4, fbm(w4 * 4.0, 3)), exp(-sq((pv - thr4) / (ew4 * 4.0))));
   }
   float thr = 0.3 - 0.6 * A.y;
-  float ew = st == 3 ? 0.05 : 0.04;
+  float ew = (st == 3 ? 0.05 : 0.04) + 0.22 * gSoft;       // soft edges fade over a wide zone (Mars albedo)
   float fil = 0.0;
   if (st == 3) {                                         // streaks break up the edge
     vec3 ws = q * f * 7.0 - s2;

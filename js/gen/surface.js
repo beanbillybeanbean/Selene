@@ -129,10 +129,19 @@ void main() {
         if (uPv0[i].x < 0.5) continue;
         vec3 pv = provinceAt(i, p, uR, uTex, pso);
         vec4 K = uPvK[i];
-        float mk = pv.x;
-        if (uPv3[i].z != 0.0) { vec4 g = gPv; mk = sstep(g.y - g.z, g.y + g.z, g.x + uPv3[i].z * 0.12 * lie) * g.w; }
-        float amt = sat(mk * K.x + pv.y * K.y);
-        amt *= 0.84 + 0.16 * sat(0.5 + l2 + 0.6 * micro);   // deposits vary in thickness inside
+        // provinces are deposits on real terrain, not a stencil: the contact is crisp in places and a
+        // gradual fade in others; the material floods craters and hollows beyond it and leaves crests,
+        // rims and knobs poking through inside; fragments and holes break the edge up
+        vec4 g = gPv;
+        float fS = uR / (max(uPv0[i].z, 50.0) * 1000.0), F = uPv3[i].z;
+        float crisp = sstep(-0.15, 0.3, fbm(p * fS * 2.5 + pso * 1.3 + float(i) * 4.0, 3));
+        float ewE = g.z * mix(1.6 + 3.0 * uPv3[i].w, 0.3, crisp);
+        vec3 pq = ds + 0.5 * (ds - p) * uPv1[i].z;                 // wind-stretched, like the province itself
+        float frag = jag(pq + pso + float(i) * 3.1, fS * 6.0, uTex);
+        float off = F * (0.22 * lie + 0.12 * (-curv)) + 0.07 * frag;
+        float mk = sstep(g.y - ewE, g.y + ewE, g.x + off) * g.w;
+        float dens = mix(0.65, 1.0, sstep(-0.35, 0.25, fbm(pq * fS * 4.0 - pso, 4) + 0.5 * frag - 0.35 * F * relL));
+        float amt = sat(mk * dens * K.x + pv.y * K.y);
         c = mix(c, uPvC[i], amt);
         c *= 1.0 + K.z * 0.25 * pv.z * (jA * 0.5 + 0.5);
       } }
