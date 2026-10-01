@@ -217,6 +217,17 @@ vec3 provinceShape(vec4 A, vec4 B, vec4 Cq, float salt, vec3 p, float R, float t
   // latitude bias: concentrate the provinces in a band (e.g. Mars' dark southern low latitudes)
   if (Cq.z != 0.0) { float la = degrees(asin(clamp(p.y, -1.0, 1.0))); v += Cq.z * 0.7 * (exp(-sq((la - Cq.x) / max(Cq.y, 1.0))) - 0.45); }
   if (gLon.z != 0.0) { float lo = degrees(atan(-p.z, p.x)); float dl = mod(lo - gLon.x + 540.0, 360.0) - 180.0; v += gLon.z * 0.7 * (exp(-sq(dl / max(gLon.y, 1.0))) - 0.45); }
+  if (st == 5) {                                         // angular plateaus: whole Voronoi blocks with straight, faulted edges
+    vec3 w5 = q * f * 1.3 + s2;
+    Cell c5 = cellular(w5, 505u);
+    float in1 = step(1.0 - A.y, c5.id), in2 = step(1.0 - A.y, c5.id2);
+    float ed = cellEdge(c5, w5) + A.w * 0.025 * jag(p + s2, f * 25.0, tex);
+    float sd = in1 > 0.5 ? (in2 > 0.5 ? 1.0 : ed) : (in2 > 0.5 ? -ed : -1.0);
+    float ew5 = max(0.012, tex * f * 2.0) + 0.1 * gSoft;
+    gPv = vec4(sd, 0.0, ew5, 1.0);
+    float m5 = sstep(-ew5, ew5, sd);
+    return vec3(m5, m5 * sstep(-0.1, 0.4, fbm(w5 * 3.0, 3)), exp(-sq(sd / (ew5 * 4.0))));
+  }
   if (st == 4) {                                         // scattered patches: many ragged blobs of distinct terrain
     vec3 w4 = q * f * 3.0 + s2;
     float pv = fbm(w4 + 0.6 * warpVec(w4 * 0.5, 2), 5, 2.1, 0.55) + A.w * (0.07 * jag(p + s2, f * 8.0, tex) + 0.025 * jag(p, f * 30.0, tex)) + 0.5 * (v - 0.3) * Cq.z;

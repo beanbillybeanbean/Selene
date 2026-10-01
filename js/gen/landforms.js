@@ -50,6 +50,7 @@ uniform float uScarpAmp, uScarpScale, uScarpLip, uRubble;
 uniform float uSecondYoung;
 uniform float uEqRidge, uEqWidth, uEqTilt, uEqCover, uEqBand, uEqBandW, uCanyonBand, uCanyonBandW, uCanyonDepth, uDimple, uDimpleSize, uDimpleCover;
 uniform int uEqBandCh, uCanyonBandCh;
+uniform float uEqStripes;
 uniform float uMicro, uUnitScale, uJag, uFurrow, uPalimp, uPateraFlows;
 layout(location = 0) out vec4 oH;
 layout(location = 1) out vec4 oM;
@@ -604,6 +605,14 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
         float streak = 0.6 + 0.5 * snoise(ring * 14.0 + vec3(0.0, 0.0, x * 0.3)) + 0.3 * snoise(ring * 40.0 + vec3(0.0, 0.0, x));
         float band = sat(uEqBand * sstep(bw * 1.1, bw * 0.3, abs(x) + 0.35 * bw * jag(p, fr(80.0), uTex)) * sat(streak) * mix(0.35, 1.0, seg));
         band = frayed(band, jag(p - 2.3, fr(30.0), uTex), 1.0);
+        if (uEqStripes > 0.5) {                    // crisp parallel rift lines instead of a streaky band
+          float t = (offKm - wob * 0.25) / (2.0 * uEqBandW) + 0.5;
+          float fl = fract(t * uEqStripes) + 0.04 * jag(p + 4.4, fr(uEqBandW * 0.5), uTex);
+          float line = sstep(0.34, 0.2, abs(fl - 0.5)) * step(0.0, t) * step(t, 1.0);
+          line *= 0.8 + 0.2 * snoise(ring * 20.0 + vec3(floor(t * uEqStripes), 0.0, 0.0));
+          band = uEqBand * line;
+          h -= abs(uEqRidge) * 0.25 * line;
+        }
         if (uEqBandCh == 0) m.r = max(m.r, band); else if (uEqBandCh == 1) m.g = max(m.g, band); else m.b = max(m.b, band);
       } }
 ` },
@@ -1038,7 +1047,7 @@ void craterField(vec3 p, float dens, float freshExp, float amp, uint seed, float
       uChaosAmp: n(P.chaos), uChaosCover: n(P.chaosCover, 0.15), uChaosScale: n(P.chaosBlock, 30),
       uTessAmp: n(P.tesserae), uTessCover: n(P.tesseraeCover, 0.15), uWrinkle: n(P.wrinkleRidges), uShieldDens: n(P.shieldFields), uShieldAmp: n(P.shieldHeight, 800),
       uPateraDens: n(P.paterae) / 200, uPateraAmp: n(P.pateraDepth, 800), uMtnAmp: n(P.blockMountains), uMtnCover: n(P.blockCover, 0.08),
-      ...vallesUniforms(P), uChOn: (P.chasmata | 0) > 0 ? 1 : 0, uChDepth: n(P.chasmaDepth, 5000), uChIslands: n(P.chasmaIslands, 0.5), uChFlow: n(P.chasmaFlow, 150), uChGraben: n(P.chasmaGraben, 0.5), uChFloor: n(P.chasmaFloor, 0.6), uChFloorCh: n(P.chasmaFloorMaterial, 2), uChWall: n(P.chasmaWall, 0.3),
+      ...vallesUniforms(P), uChOn: (P.chasmata | 0) > 0 ? 1 : 0, uEqStripes: n(P.eqStripes), uChDepth: n(P.chasmaDepth, 5000), uChIslands: n(P.chasmaIslands, 0.5), uChFlow: n(P.chasmaFlow, 150), uChGraben: n(P.chasmaGraben, 0.5), uChFloor: n(P.chasmaFloor, 0.6), uChFloorCh: n(P.chasmaFloorMaterial, 2), uChWall: n(P.chasmaWall, 0.3),
       uDunes: n(P.dunes), uTerrace: n(P.terraces), uMare: n(P.maria), uPlains: n(P.plainsRelief, 350), uChTrib: n(P.chasmaTributaries, 0.6), ...iceSheetUniforms(P, ctx), uBasinDust: n(P.basinDust), uRiseDust: n(P.riseDust), uFine: n(P.fineRelief, 350), uMareLevel: n(P.mareLevel, -1500),
       uLavaLevel: P.lavaSea ? n(P.lavaLevel, -500) : -1e9, uLavaCracks: n(P.lavaCracks),
       uScarpAmp: n(P.scarps), uScarpScale: n(P.scarpScale, 600), uScarpLip: n(P.scarpLip, 0.3), uRubble: n(P.rubble), uMicro: n(P.microRelief), uUnitScale: n(P.unitScale, 250), uJag: n(P.edgeJag, 1), uFurrow: n(P.furrows), uPalimp: n(P.palimpsests), uPateraFlows: n(P.pateraFlows), uSecondYoung: n(P.youngSecondary),

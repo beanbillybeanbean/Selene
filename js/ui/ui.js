@@ -103,9 +103,9 @@
       'Solar System — planets': ['mars', 'venus', 'mercury', 'earth'],
       'Solar System — moons': ['moon', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'enceladus', 'mimas', 'tethys', 'dione', 'iapetus', 'miranda', 'ariel', 'umbriel', 'triton', 'charon'],
       'Dwarf planets & small worlds': ['pluto', 'ceres', 'vesta', 'eris', 'makemake', 'sedna'],
-      'Rocky & volcanic worlds': ['superearth', 'mottled', 'opaline', 'cracked', 'lava', 'exotic', 'hellworld', 'obsidian', 'carbon', 'sulfur', 'saltflats', 'dunesea', 'noachian', 'frozenmars'],
+      'Rocky & volcanic worlds': ['superearth', 'aridhab', 'mottled', 'opaline', 'cracked', 'lava', 'exotic', 'hellworld', 'obsidian', 'carbon', 'sulfur', 'saltflats', 'dunesea', 'noachian', 'frozenmars'],
       'Icy worlds': ['banded', 'rift', 'chaosmoon', 'grooved', 'cryovolcanic'],
-      'Earth-like worlds': ['aridhab', 'eyeball', 'desert', 'snowball', 'oceanworld', 'jungle', 'tundra'],
+      'Earth-like worlds': ['eyeball', 'desert', 'snowball', 'oceanworld', 'jungle', 'tundra'],
     };
     const used = new Set();
     for (const [label, ids] of Object.entries(groups)) {

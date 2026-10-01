@@ -8,12 +8,12 @@ icy and volcanic worlds. Every parameter is editable. There are 52 presets, grou
   Ariel, Umbriel, Triton, Charon.
 - **Dwarf planets and small worlds:** Pluto (with its heart-shaped ice plain), Ceres, Vesta, Eris, Makemake, and an
   ultra-red Kuiper-belt world.
-- **Rocky and volcanic worlds:** a Super-Earth, a mottled desert world, an opaline (vivid blue mineral) world, the Cracked world, a lava world, a fractured exotic world, a scorched world,
+- **Rocky and volcanic worlds:** a Super-Earth (angular plateaus, striped equator), an arid mesa world, a mottled desert world, an opaline (vivid blue mineral) world, the Cracked world, a lava world, a fractured exotic world, a scorched world,
   an obsidian world, a carbon world, a sulfur world, a salt-flat world, a dune world, an ancient wet world, and an
   ice-age red world.
 - **Icy worlds:** the Banded moon (dark crust, bright patches, a painted equatorial canyon and an equatorial ridge),
   the Rift moon (a giant Valles Marineris system), a chaos moon, a grooved ice world and a cryovolcanic world.
-- **Earth-like worlds:** an arid habitable world, an Eyeball world (tidally locked), a Desert world (no oceans), a Snowball world, an Ocean world, a Jungle world and a Tundra world.
+- **Earth-like worlds:** an Eyeball world (tidally locked), a Desert world (no oceans), a Snowball world, an Ocean world, a Jungle world and a Tundra world.
 
 Everything runs on your GPU in the browser. There is nothing to install.
 
@@ -51,6 +51,7 @@ The **Great provinces** section adds up to three planet-scale layers to any worl
 - **Streaky provinces:** Mars-style dark regions, wind-stretched, with dense detail inside and along their ragged edges.
 - **Regions:** plain soft-edged provinces.
 - **Scattered patches:** many separate blotches of varying strength, like frost or dark deposits on an icy moon.
+- **Angular plateaus:** big blocks with straight, faulted edges (the Super-Earth's pale plateaus).
 
 Each layer has its own colour (the Province 1–3 palette entries), coverage, size, interior and edge detail,
 edge brightness and wind stretch. **Latitude bias** pulls a layer towards a band of latitude (the centre and width
