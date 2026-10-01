@@ -9,10 +9,25 @@
   const S = (window.Selene = window.Selene || {});
 
   const COMMON = `
-uniform float uT0, uDT, uLapse, uSeed, uWindNoise;
+uniform float uT0, uDT, uLapse, uSeed, uWindNoise, uLock;
+uniform vec3 uSub;      // tidally locked worlds: direction of the substellar point
 float latDeg(vec3 p) { return degrees(asin(clamp(p.y, -1.0, 1.0))); }
-float seaTemp(vec3 p) { float s = p.y * p.y; return uT0 + uDT * (1.0 / 3.0 - s); }
+float seaTemp(vec3 p) {
+  if (uLock > 0.5) {    // heated only on the day side, hottest under the star; the night side is uniformly cold
+    float mu = max(dot(p, uSub), 0.0);
+    return uT0 + uDT * (pow(mu, 0.6) - 0.3);
+  }
+  float s = p.y * p.y; return uT0 + uDT * (1.0 / 3.0 - s);
+}
+// "climate latitude": distance in degrees from the warmest zone (equator, or the substellar point)
+float climLat(vec3 p) { return uLock > 0.5 ? degrees(acos(clamp(dot(p, uSub), -1.0, 1.0))) * 0.5 : abs(latDeg(p)); }
 vec2 windEN(vec3 p) {
+  if (uLock > 0.5) {    // surface winds blow from the night side in toward the substellar point, where air rises
+    vec3 t = uSub - p * dot(uSub, p); float l = length(t);
+    vec2 w = l > 1e-5 ? vec2(dot(t, eastOf(p)), dot(t, northOf(p))) / l * 0.8 : vec2(0.0);
+    vec3 so = seedOff(uSeed + 9.0);
+    return w + uWindNoise * vec2(fbm(p * 3.0 + so, 3), fbm(p * 3.0 - so, 3));
+  }
   float lat = latDeg(p), a = abs(lat), sg = lat < 0.0 ? -1.0 : 1.0;
   float t1 = sstep(24.0, 36.0, a), t2 = sstep(54.0, 66.0, a);
   float u = mix(mix(-0.85, 1.0, t1), -0.55, t2);
@@ -41,7 +56,7 @@ void main() {
   float oceanic = sampleDir(uOceanLo, p).r;             // large-scale fraction of ocean nearby
   float T = seaTemp(p) - uLapse * max(h - max(uSea, 0.0), 0.0) * 0.001;
   // continental interiors are colder in the mean at mid/high latitude (Siberia, Canada)
-  T -= 7.0 * (1.0 - oceanic) * sstep(0.2, 0.8, abs(p.y)) * (h > uSea ? 1.0 : 0.0);
+  T -= 7.0 * (1.0 - oceanic) * sstep(0.2, 0.8, uLock > 0.5 ? 1.0 - max(dot(p, uSub), 0.0) : abs(p.y)) * (h > uSea ? 1.0 : 0.0);
   T += 1.5 * fbm(p * 5.0 + seedOff(uSeed), 3);
   o = vec4(g, T, h > uSea ? 0.0 : 1.0);
 }`;
@@ -61,7 +76,7 @@ void main() {
   float qs = qsat(T);
   float ocean = pr.a;
   if (ocean > 0.5) q += (qs - q) * uEvap;
-  float lat = abs(latDeg(p));
+  float lat = climLat(p);
   // large-scale vertical motion: ITCZ and polar front rise, subtropical highs and poles sink
   float z = 0.35 + 1.3 * exp(-sq(lat / 9.0)) + 0.55 * exp(-sq((lat - 55.0) / 13.0)) - 0.28 * exp(-sq((lat - 27.0) / 9.0)) - 0.2 * sstep(70.0, 90.0, lat);
   float lift = max(0.0, dot(w, pr.xy)) * uOro;           // air forced up the slope
@@ -97,7 +112,7 @@ void main() {
     const tmp16 = gpu.field(Nc / 2 >= 16 ? 16 : 8, 'r32f');
     ops.resample(om, tmp16); ops.resample(tmp16, omLo);
     gpu.free(tmp16); gpu.free(om);
-    const common = { uT0: P.temperature, uDT: P.tempContrast, uLapse: 6.5, uSeed: (ctx.seed % 997) + 0.5, uWindNoise: 0.35, uR: ctx.R, uSea: sea };
+    const common = { uLock: P.tidalLock ? 1 : 0, uSub: S.latLonDir(P.subLat ?? 0, P.subLon ?? 0), uT0: P.temperature, uDT: P.tempContrast, uLapse: 6.5, uSeed: (ctx.seed % 997) + 0.5, uWindNoise: 0.35, uR: ctx.R, uSea: sea };
     const prep = gpu.field(Nc, 'rgba32f');
     gpu.run(gpu.program('clim.prep', PREP), prep, { ...common, uH: Hc, uOceanLo: omLo });
     gpu.free(omLo);

@@ -103,9 +103,9 @@
       'Solar System — planets': ['mars', 'venus', 'mercury', 'earth'],
       'Solar System — moons': ['moon', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'enceladus', 'mimas', 'tethys', 'dione', 'iapetus', 'miranda', 'ariel', 'umbriel', 'triton', 'charon'],
       'Dwarf planets & small worlds': ['pluto', 'ceres', 'vesta', 'eris', 'makemake', 'sedna'],
-      'Rocky & volcanic worlds': ['cracked', 'lava', 'exotic', 'hellworld', 'obsidian', 'carbon', 'sulfur', 'saltflats', 'dunesea', 'noachian', 'frozenmars'],
+      'Rocky & volcanic worlds': ['superearth', 'mottled', 'opaline', 'cracked', 'lava', 'exotic', 'hellworld', 'obsidian', 'carbon', 'sulfur', 'saltflats', 'dunesea', 'noachian', 'frozenmars'],
       'Icy worlds': ['banded', 'rift', 'chaosmoon', 'grooved', 'cryovolcanic'],
-      'Earth-like worlds': ['desert', 'snowball', 'oceanworld', 'jungle', 'tundra'],
+      'Earth-like worlds': ['aridhab', 'eyeball', 'desert', 'snowball', 'oceanworld', 'jungle', 'tundra'],
     };
     const used = new Set();
     for (const [label, ids] of Object.entries(groups)) {
@@ -301,7 +301,7 @@
       const hs = +$('exHScale').value || 1, lon = +$('exLon').value || 0;
       const radiusKm = +$('exRadius').value || world.R / 1000;
       const files = [], fn = {};
-      const opts = { lonShift: lon };
+      const opts = { lonShift: lon, dryOceans: world.P.ocean && !$('mBakeWater').checked };
       const add = async (nm, blob) => { files.push({ name: nm, blob }); };
       const pct = (label) => (f) => ep(`${label} ${Math.round(f * 100)}%`);
       // 1) exact height range of the exported map
@@ -310,7 +310,7 @@
       const mm = { min: mn, max: mx };
       // 2) height maps, streamed
       const e16 = $('mH16').checked ? new E.PNGStream(W, Hh, 1, 16) : null, e8 = $('mH8').checked ? new E.PNGStream(W, Hh, 1, 8) : null;
-      const eS = world.P.ocean && e16 ? new E.PNGStream(W, Hh, 1, 16) : null;   // Blender-friendly: sea surface flat
+      const eS = world.P.ocean && e16 && $('mBakeWater').checked ? new E.PNGStream(W, Hh, 1, 16) : null;   // Blender-friendly: sea surface flat
       const dith = {};
       if (e16 || e8) {
         await E.streamMap(world, 'height', W, Hh, opts, [async (rows, y0, h) => {
@@ -339,8 +339,8 @@
         }], pct(label));
         fn[key] = `${name}_${suffix}.png`; await add(fn[key], await enc.finish());
       };
-      await simple($('mNormal').checked, 'normal', 'normal', 'normal', 'Normals', 3, { normalStrength: (+$('exNorm').value || 1) * hs * (world.R / 1000) / radiusKm, flatSea: world.P.ocean });
-      await simple($('mNormalKsp').checked, 'normal', 'normalKsp', 'normal_ksp_dxt5nm', 'KSP normals', 4, { normalStrength: (+$('exNorm').value || 1) * hs * (world.R / 1000) / radiusKm, flatSea: world.P.ocean, swizzle: true });
+      await simple($('mNormal').checked, 'normal', 'normal', 'normal', 'Normals', 3, { normalStrength: (+$('exNorm').value || 1) * hs * (world.R / 1000) / radiusKm, flatSea: world.P.ocean && $('mBakeWater').checked });
+      await simple($('mNormalKsp').checked, 'normal', 'normalKsp', 'normal_ksp_dxt5nm', 'KSP normals', 4, { normalStrength: (+$('exNorm').value || 1) * hs * (world.R / 1000) / radiusKm, flatSea: world.P.ocean && $('mBakeWater').checked, swizzle: true });
       await simple($('mKspColor').checked, 'kspcolor', 'kspColor', 'color_ksp', 'KSP colour', 3, { aoStrength: +$('exBake').value });
       await simple($('mEmit').checked && world.P.emissive, 'emission', 'emission', 'emission', 'Emission', 3);
       await simple($('mRough').checked, 'roughness', 'roughness', 'roughness', 'Roughness', 1);

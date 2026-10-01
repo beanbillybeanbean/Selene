@@ -21,7 +21,8 @@ uniform float uSea, uR, uSeed, uHasA, uVar, uHmin, uHmax;
 // terran palette (linear)
 uniform vec3 uDeep, uMid, uShelf, uReef, uSeaIce, uSand, uRed, uDarkRock, uPale, uSteppe, uSavanna, uGrass,
              uForestT, uForestTr, uForestB, uTundra, uRock, uSnow;
-uniform float uVegK, uSnowBias, uRiverK;
+uniform float uVegK, uSnowBias, uRiverK, uLeads, uLeadScale, uLock;
+uniform vec3 uSub;
 // world palette + controls
 uniform vec3 uC[16];
 uniform vec3 uPvC[3]; uniform vec4 uPvK[3];   // province colour; x colour strength, y filament brightness, z edge darkening
@@ -53,6 +54,22 @@ void main() {
   float l1 = fbm(p * 7.0 + so, 5), l2 = fbm(p * 19.0 - so, 4), l3 = fbm(p * 2.5 + so * 0.3, 3);
   vec3 c; float water = 0.0; vec3 em = vec3(0.0);
 
+  // ice fractures: networks of dark cracks (open leads, meltwater channels) across ice. On a tidally
+  // locked world they are drawn out radially from the warm substellar ocean, like rivers of dark water.
+  float leads = 0.0;
+  if (uModel == 0 && uLeads > 0.0) {
+    for (int k = 0; k < L(2); k++) {
+      vec3 q = p * (uR / (uLeadScale * 1000.0 / (1.0 + 2.2 * float(k))));
+      if (uLock > 0.5) { vec3 rd = uSub - p * dot(uSub, p); float l = length(rd); if (l > 1e-4) { rd /= l; q -= rd * dot(q, rd) * 0.82; } }
+      q += 0.35 * warpVec(q * 0.4 + float(k) * 7.0, 3);
+      Cell lc = cellular(q, 707u + uint(k));
+      float ed = cellEdge(lc, q) + 0.035 * fbm(q * 3.0, 3);
+      float keep = step(0.3 + 0.2 * float(k), fract(lc.id * 7.13 + lc.id2 * 3.71));
+      leads = max(leads, sstep(0.06, 0.012, ed) * keep * (1.0 - 0.35 * float(k)));
+    }
+    leads *= uLeads;
+    if (uLock > 0.5) leads *= mix(0.3, 1.0, sstep(-0.3, 0.45, dot(p, uSub)));   // densest near the warm ocean
+  }
   if (uModel == 0) {
     vec4 cl = sampleDir(uClim, p);
     float T = cl.r - 0.0065 * (max(h - max(uSea, 0.0), 0.0) - max(cl.b - max(uSea, 0.0), 0.0));
@@ -65,13 +82,21 @@ void main() {
       c *= 1.0 + 0.07 * fbm(p * 9.0 - so, 4);
       float ice = sstep(-7.0, -11.0, T + 2.5 * fbm(p * 8.0 + so, 5));
       c = mix(c, uSeaIce * (0.93 + 0.07 * micro), ice);
-      water = 1.0 - ice;
+      c = mix(c, mix(uMid, uDeep, 0.5), leads * ice);           // open water in the cracks
+      water = 1.0 - ice * (1.0 - leads);
     } else {
       float Tp = max(T, 0.0);
       float W = Pm / (280.0 + 45.0 * Tp + 1.3 * Tp * Tp) * uVegK;
+      // rivers: real channel width grows with the catchment (~0.012·√A km), drawn as water with the
+      // coverage of a texel it actually fills, so big rivers show and small ones fade out; a faint
+      // strip of moister ground follows only rivers that cross land that is already partly vegetated
+      float riv = 0.0;
       if (uHasA > 0.5) {
-        float lA = log(max(at(uA).r, 1e-3)) / log(10.0);
-        W += uRiverK * sstep(3.3, 5.0, lA) * (1.0 - sstep(0.4, 1.0, W)) * 0.8;
+        float Akm = max(at(uA).r, 1e-3);
+        float texKm = 2.0 * texelAngle(uN) * uR * 0.001;
+        float wKm = 0.012 * sqrt(Akm) * (0.8 + 0.4 * micro);
+        riv = uRiverK * sat(wKm / texKm * 1.5) * sstep(2500.0, 12000.0, Akm);
+        W += 0.25 * uRiverK * sat(wKm / texKm) * sstep(0.08, 0.3, W);
       }
       vec3 soil = mix(uSand, uRed, sstep(-0.25, 0.35, l1 + 0.35 * l3));
       soil = mix(soil, uDarkRock, sstep(0.12, 0.55, l2 + 0.25 * l1) * 0.65);
@@ -99,6 +124,13 @@ void main() {
       float sheet = sstep(-7.0, -12.0, sT);
       float mtn = sstep(-3.0, -8.0, sT) * (1.0 - sstep(0.35, 0.9, slope));
       c = mix(c, uSnow * (0.94 + 0.06 * micro), max(sheet, mtn));
+      c = mix(c, mix(uDarkRock, uMid, 0.4), leads * sheet * 0.85);  // dark crevasse / meltwater channels in ice sheets
+      if (riv > 0.0) {                                // water in the channel (frozen rivers stay white)
+        float frozen = sstep(-4.0, -9.0, T);
+        vec3 rw = mix(mix(uShelf, uMid, 0.55) * 0.9, uSeaIce, frozen);
+        c = mix(c, rw, sat(riv));
+        water = max(water, sat(riv) * (1.0 - frozen) * 0.8);
+      }
     }
     c *= 1.0 + uVar * (0.12 * micro + 0.06 * l2);
   } else {
@@ -247,6 +279,7 @@ void main() {
       ...U, uC: arr,
       uH: fields.H, uClim: fields.clim || fields.H, uA: fields.A || fields.H, uMat: fields.M || fields.H,
       uHasA: fields.A ? 1 : 0, uModel: P.model === 'terran' ? 0 : 1,
+      uLeads: n(P.iceCracks), uLeadScale: n(P.iceCrackScale, 400), uLock: P.tidalLock ? 1 : 0, uSub: S.latLonDir(P.subLat ?? 0, P.subLon ?? 0),
       uSea: P.ocean ? 0 : -1e9, uR: ctx.R, uSeed: (ctx.seed % 991) + 0.5, uVar: n(P.colorVariation, 1),
       uVegK: n(P.vegetation, 1), uSnowBias: n(P.snowBias), uRiverK: n(P.riverGreen, 1),
       uHmin: ctx.hmin ?? -5000, uHmax: ctx.hmax ?? 5000,

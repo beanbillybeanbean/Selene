@@ -10,8 +10,24 @@
   const EQ = String.raw`//#include planet
 uniform sampler2DArray uSrc, uHt, uMat;
 uniform int uW, uHH, uX0, uY0, uMode;
+uniform vec3 uBed0, uBed1; uniform float uDry;
 uniform float uSwz, uLon0, uR, uNormalK, uSea, uFlatSea, uEmissive, uAoK, uCloudCover, uCloudScale, uLights, uSeed, uHmin, uHmax;
 out vec4 o;
+// colour map; with oceans left out it shows the sea floor (sand on the shelves, darker sediment in the
+// deeps) so KSP / Blender can draw their own water on top. Sea ice stays (it is a surface).
+vec4 colourAt(vec3 d) {
+  vec4 o = sampleDir(uSrc, d);
+  if (uDry > 0.5 && o.a > 0.02) {
+    float h = sampleDirCubic(uHt, d);
+    if (h < uSea) {
+      float dep = uSea - h;
+      vec3 sb = mix(uBed0, uBed1, sstep(30.0, 2500.0, dep));
+      sb *= 0.92 + 0.12 * fbm(d * 40.0 + 3.1, 4);
+      o.rgb = mix(o.rgb, linearToSrgb(sb), sat(o.a / 0.8));
+    }
+  }
+  return o;
+}
 float hAt(vec3 d) { float h = sampleDirCubic(uHt, d); return uFlatSea > 0.5 ? max(h, uSea) : h; }
 void main() {
   float lon = (float(uX0) + gl_FragCoord.x) / float(uW) * TAU - PI + uLon0;
@@ -19,7 +35,7 @@ void main() {
   float lat = PI * 0.5 - row / float(uHH) * PI;
   vec3 d = latLonDir(lat, lon);
   if (uMode == 0) { o = vec4(sampleDirCubic(uHt, d)); return; }
-  if (uMode == 1) { o = sampleDir(uSrc, d); return; }
+  if (uMode == 1) { o = colourAt(d); return; }
   float dlat = PI / float(uHH), dlon = TAU / float(uW);
   float de = max(dlon * cos(lat), dlat * 0.5);
   vec3 e = eastOf(d), n = northOf(d);
@@ -56,7 +72,7 @@ void main() {
     o = vec4(1.0 - sat(occ / wsum * 1.6)); return;
   }
   if (uMode == 7) {        // colour with baked, non-directional relief shading: occlusion in hollows, lit crests
-    vec4 alb = sampleDir(uSrc, d);
+    vec4 alb = colourAt(d);
     float h = hAt(d), occ = 0.0, wsum = 0.0, ringMean = 0.0;
     float r0 = max(dlat, texelAngle(textureSize(uHt, 0).x));
     for (int k = 0; k < L(5); k++) {
@@ -109,6 +125,11 @@ void main() {
   o = vec4(linearToSrgb(col * sat(lum)), 1.0);
 }`;
 
+  const bed = (P, k, d) => {
+    const hex = P.colors && P.colors[k]; if (!hex) return d;
+    const v = parseInt(String(hex).replace('#', ''), 16);
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255].map((x) => { x /= 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
+  };
   const MODES = { height: 0, albedo: 1, emission: 1, normal: 2, roughness: 3, ao: 4, clouds: 5, lights: 6, kspcolor: 7 };
 
   // Render rows [y0, y0+h) of a map, tiling horizontally. Returns Float32Array (height) or Uint8Array RGBA.
@@ -123,7 +144,7 @@ void main() {
     }
     const out = float ? new Float32Array(W * h) : new Uint8Array(W * h * 4);
     const U = {
-      uSrc: layer === 'emission' ? world.emission : world.albedo, uHt: world.H, uMat: world.M || world.H, uW: W, uHH: Hh, uMode: mode, uSwz: opts.swizzle ? 1 : 0,
+      uSrc: layer === 'emission' ? world.emission : world.albedo, uHt: world.H, uMat: world.M || world.H, uW: W, uHH: Hh, uMode: mode, uSwz: opts.swizzle ? 1 : 0, uDry: opts.dryOceans ? 1 : 0, uBed0: bed(world.P, 'sand', [0.42, 0.36, 0.27]), uBed1: bed(world.P, 'darkRock', [0.12, 0.11, 0.1]),
       uLon0: (opts.lonShift || 0) * Math.PI / 180, uR: world.R, uNormalK: opts.normalStrength ?? 1, uSea: world.P.ocean ? 0 : -1e9,
       uFlatSea: opts.flatSea ? 1 : 0, uEmissive: world.P.emissive ? 1 : 0, uAoK: opts.aoStrength ?? 1, uCloudCover: opts.cloudCover ?? 0.5,
       uCloudScale: opts.cloudScale ?? 4, uLights: opts.lights ?? 0.5, uSeed: (world.ctx.seed % 997) + 0.5, uHmin: world.ctx.hmin, uHmax: world.ctx.hmax, uY0: y0,

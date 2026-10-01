@@ -2,18 +2,18 @@
 
 Selene generates realistic, seamless planet maps for **KSP (Kopernicus)** and **Blender**:
 16-bit height maps, colour (albedo) maps, normal maps and emission maps. It is built for rocky,
-icy and volcanic worlds. Every parameter is editable. There are 47 presets, grouped in the World type menu:
+icy and volcanic worlds. Every parameter is editable. There are 52 presets, grouped in the World type menu:
 - **Planets:** Mars (real layout: Tharsis, Olympus Mons, Valles Marineris, Hellas, Argyre), Venus, Mercury, Earth.
 - **Moons:** the Moon, Io, Europa, Ganymede, Callisto, Titan, Enceladus, Mimas, Tethys, Dione, Iapetus, Miranda,
   Ariel, Umbriel, Triton, Charon.
 - **Dwarf planets and small worlds:** Pluto (with its heart-shaped ice plain), Ceres, Vesta, Eris, Makemake, and an
   ultra-red Kuiper-belt world.
-- **Rocky and volcanic worlds:** the Cracked world, a lava world, a fractured exotic world, a scorched world,
+- **Rocky and volcanic worlds:** a Super-Earth, a mottled desert world, an opaline (vivid blue mineral) world, the Cracked world, a lava world, a fractured exotic world, a scorched world,
   an obsidian world, a carbon world, a sulfur world, a salt-flat world, a dune world, an ancient wet world, and an
   ice-age red world.
 - **Icy worlds:** the Banded moon (dark crust, bright patches, a painted equatorial canyon and an equatorial ridge),
   the Rift moon (a giant Valles Marineris system), a chaos moon, a grooved ice world and a cryovolcanic world.
-- **Earth-like worlds:** a Desert world (no oceans), a Snowball world, an Ocean world, a Jungle world and a Tundra world.
+- **Earth-like worlds:** an arid habitable world, an Eyeball world (tidally locked), a Desert world (no oceans), a Snowball world, an Ocean world, a Jungle world and a Tundra world.
 
 Everything runs on your GPU in the browser. There is nothing to install.
 
@@ -201,7 +201,7 @@ resolution. It is also included in exports.
 | `*_color.png` | Albedo / colour map (sRGB, no baked lighting) |
 | `*_height16.png` | 16-bit greyscale height. The metre range is in `*_info.txt`. |
 | `*_height8.png` | 8-bit height with dithering, which breaks up terracing when interpolated |
-| `*_surface16.png` | Ocean worlds only: height with the sea surface flattened, for rendering |
+| `*_surface16.png` | Ocean worlds with "Paint oceans" ticked: height with the sea surface flattened, for rendering |
 | `*_normal.png` | Tangent-space normal map (OpenGL / +Y north) |
 | `*_emission.png` | Glowing lava, for lava worlds and Io |
 | `*_specular.png` | Ocean mask (Earth-like worlds) |
@@ -216,6 +216,17 @@ resolution. It is also included in exports.
 All maps are **equirectangular (2:1)**. Column 0 is 180° W and the top row is the north pole.
 The seam and the poles are artefact-free because everything is simulated on a cube-sphere.
 
+### Tidally locked worlds and ice cracks
+On Earth-like worlds, **Tidally locked** (Climate) makes one side always face the star. The climate is then warmest
+under the star (the **substellar point**, which you can place). That gives a warm "eye" of open ocean and coasts,
+with everything else frozen. Winds blow in toward the eye, where the rain falls.
+
+**Cracks in the ice** draws dark crack networks (open water, meltwater channels) across sea ice and ice sheets. On a
+locked world they run outward from the eye and are densest near it.
+
+**Rivers** are drawn as water. Each one's width grows with the area that drains into it, so big rivers show and
+small ones fade out at low resolution.
+
 ### KSP / Kopernicus
 In KSP a planet looks different from Selene's preview. From far away KSP draws a textured sphere (colour + normal map);
 closer in it builds real terrain from the **height map** and paints it with the colour map **per vertex**. That terrain is
@@ -226,6 +237,13 @@ For the best result:
   much less noise than before, but it is still only 256 levels.
 - **Never block-compress the height map** (DXT1/DXT5/BC). Keep it PNG, or an uncompressed / L8 DDS.
   Compression artefacts turn into bumps all over the terrain.
+- **Oceans are not painted into the maps by default.** For ocean worlds:
+  - the colour map shows the sea floor (sand on the shelves, darker sediment in the deeps);
+  - the normal map keeps the sea-floor relief;
+  - the height map always holds the real sea floor, with sea level at 0 m.
+
+  KSP's (Kopernicus) ocean then draws the water. Tick **Paint oceans into colour & normal maps** if you want the
+  old look, for example for a scaled-space texture or a render without a water layer.
 - Normal maps: tick **Normal map, KSP layout (DXT5nm)** and convert that file as plain DXT5. Alternatively, convert the
   normal `*_normal.png` with your tool's *normal map / DXT5nm* mode. Converting the plain normal map as ordinary
   DXT1/DXT5 makes KSP read the wrong channels, and ridges turn into dark grooves.

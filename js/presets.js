@@ -273,7 +273,12 @@
     r('Climate', 'orographic', 'Rain-shadow strength', 0, 3, 0.05, { show: (P) => T(P) && P.ocean }),
     r('Climate', 'vegetation', 'Vegetation', 0, 2, 0.01, { show: T }),
     r('Climate', 'snowBias', 'Snow line shift (°C)', -15, 15, 0.5, { show: T }),
-    r('Climate', 'riverGreen', 'Green river valleys', 0, 2, 0.05, { show: T }),
+    b('Climate', 'tidalLock', 'Tidally locked (eyeball world)', { show: T, help: 'One side always faces the star: it is warm only around the substellar point, so you get a warm "eye" of open ocean surrounded by ice.' }),
+    r('Climate', 'subLat', '  Substellar latitude (°)', -60, 60, 1, { show: (P) => T(P) && P.tidalLock }),
+    r('Climate', 'subLon', '  Substellar longitude (°)', -180, 180, 1, { show: (P) => T(P) && P.tidalLock }),
+    r('Climate', 'iceCracks', 'Cracks in the ice', 0, 1, 0.01, { show: T, help: 'Dark crack networks (open water, meltwater channels) across sea ice and ice sheets. On tidally locked worlds they spread out from the warm ocean.' }),
+    r('Climate', 'iceCrackScale', '  Crack spacing (km)', 50, 3000, 10, { show: (P) => T(P) && P.iceCracks > 0 }),
+    r('Climate', 'riverGreen', 'Rivers', 0, 2, 0.05, { show: T, help: 'Draws the big rivers as water, with a width set by how much land drains into them.' }),
 
     r('Colouring', 'heightColor', 'Low → high colour ramp', 0, 1, 0.01, { show: W }),
     r('Colouring', 'colorDistortion', 'Colour distortion', 0, 3, 0.01, { show: W, help: 'Frays colour boundaries so they never follow contour lines.' }),
@@ -325,7 +330,7 @@
     erosion: true, erosionIterations: 320, erosionStrength: 1.2, flowExponent: 2.2, hillslope: 0.02, talus: 0.7, uplift: 0, detailFade: 150,
     craters: false, craterDensity: 0.1, craterMax: 200, basins: 0, maria: 0, rays: 0, degradation: 0.5, gravity: 9.81,
     lineae: 0, chaos: 0, paterae: 0,
-    temperature: 14, tempContrast: 44, precipitation: 1000, orographic: 1, vegetation: 1, snowBias: 0, riverGreen: 1,
+    temperature: 14, tempContrast: 44, precipitation: 1000, orographic: 1, vegetation: 1, snowBias: 0, riverGreen: 1, tidalLock: false, subLat: 0, subLon: 0, iceCracks: 0, iceCrackScale: 400,
     colorVariation: 1, dust: 0, highTint: 0, freshness: 1, slopeBright: 0.15, iceCaps: false, capSize: 8,
     colors: TERRAN_COLORS,
   };
@@ -684,6 +689,36 @@
     tundra: { name: 'Tundra world', desc: 'A cold, dry planet: brown tundra and taiga, vast ice sheets at high latitudes, frozen seas, and only a narrow green belt near the equator.', p: {
       model: 'terran', landFraction: 0.4, temperature: -6, tempContrast: 38, precipitation: 600, vegetation: 0.8, snowBias: 1,
       colors: { deep: '#07172f', mid: '#0d2c4d', shelf: '#23566c', reef: '#3a7f86', seaIce: '#dde5ec', sand: '#b8a584', red: '#8f6a4c', darkRock: '#4e4a44', pale: '#cfc6b2', steppe: '#8c8560', savanna: '#7f7a50', grass: '#5f6c3a', forestT: '#2c4228', forestTr: '#223d1c', forestB: '#27372b', tundra: '#7a7058', rock: '#6b6660', snow: '#f3f6f9' } } },
+    eyeball: { name: 'Eyeball world', desc: 'Tidally locked ocean planet: one side always faces its red star. A warm dark "eye" of open ocean and ragged coasts sits under the star; everything else is frozen into cream-coloured ice, cracked by dark channels that spread out from the eye like rivers.', p: {
+      model: 'terran', landFraction: 0.24, geoRadius: 6800, plates: 14, continentScale: 2.2, temperature: -38, tempContrast: 62, precipitation: 600, vegetation: 0.08, snowBias: 1,
+      tidalLock: true, subLat: 0, subLon: 0, iceCracks: 0.85, iceCrackScale: 650,
+      colors: { deep: '#1d1318', mid: '#2b1c22', shelf: '#4e3a35', reef: '#5a4038', seaIce: '#e6d6bb', sand: '#b39270', red: '#8a5a40', darkRock: '#4a3a32', pale: '#d9c6a8', steppe: '#8a7650', savanna: '#83704a', grass: '#6a6038', forestT: '#3f3a26', forestTr: '#35301f', forestB: '#3a3527', tundra: '#a08c6c', rock: '#6e5f52', snow: '#efe3cc' } } },
+    superearth: { name: 'Super-Earth', desc: 'A big, dry, high-gravity rocky planet: subdued relief under a thick dust mantle, pale cream plains, broad grey-taupe lowlands and huge angular plateaus of lighter rock.', p: {
+      geoRadius: 11000, landFraction: 0.5, continentScale: 0.9, continentWarp: 0.5, highlandHeight: 900, lowlandHeight: -900, provinceSharpness: 0.1, undulation: 900, roughness: 300, hillScale: 1400, erodedLook: 1.6, fineRelief: 60, microRelief: 25, unitScale: 1200, colorFray: 0.2, reliefColor: 0.08, broadRelief: 0.08, curvatureColor: 0,
+      scarps: 600, scarpScale: 900, scarpLevels: 2, scarpLip: 0.15, craters: true, craterDensity: 0.015, oldCraters: 0.3, craterMax: 400, transitionDiameter: 6, craterDepth: 0.4,
+      pv1Style: 1, pv1Cover: 0.22, pv1Size: 6500, pv1Colour: 0.6, pv1Fil: 0, pv1Jag: 0.35, pv1Soft: 0.05, pv1Relief: 700, pv1Follow: 0, pv1Detail: 150,
+      pv2Style: 1, pv2Cover: 0.25, pv2Size: 7000, pv2Colour: 0.5, pv2Fil: 0, pv2Jag: 0.6, pv2Soft: 0.5, pv2Relief: -300, pv2Follow: 0, pv2Seed: 6,
+      windStreaks: 0.5, streakTexture: 0.15, heightColor: 0.15, regional: 0.08, regionalScale: 1.6, regional2: 0.05, cliffColor: 0.1, hueLock: 0.6, polarTint: 0.4, polarLat: 0.75, colorVariation: 0.15, unitTone: 0,
+      colors: { low: '#c8b9a2', high: '#d6c8b2', alt: '#ded3c0', alt2: '#a59683', polar: '#e2d9cb', hemi: '#d6c8b2', cliff: '#e6dccb', dark: '#7d7062', second: '#9a8d7d', bright: '#efe7da', ice: '#ffffff', lava: '#000000', prov1: '#e8dfcf', prov2: '#8f8476', prov3: '#7a6f63' } } },
+    aridhab: { name: 'Arid habitable world', desc: 'A warm, mostly dry living world: ochre and cream deserts, eroded mesas and escarpments, dusty olive scrub, teal-green lowlands around a few shallow inland seas, and salt-white playas.', p: {
+      model: 'terran', landFraction: 0.86, geoRadius: 6800, plates: 12, continentScale: 0.9, temperature: 20, tempContrast: 30, precipitation: 560, orographic: 1.4, vegetation: 1.1, snowBias: -4, riverGreen: 1,
+      erosionIterations: 260, mountainHeight: 4500, roughness: 420, colorVariation: 1.3,
+      colors: { deep: '#3c5a5c', mid: '#4f6e6a', shelf: '#6d8a80', reef: '#7c9a88', seaIce: '#dfe6ec', sand: '#d2b48c', red: '#c08a5a', darkRock: '#6a5442', pale: '#e8dcc4', steppe: '#9c9466', savanna: '#a49264', grass: '#6c8462', forestT: '#4c6a5a', forestTr: '#41604f', forestB: '#3e5248', tundra: '#a0927a', rock: '#9c8064', snow: '#f1f2f0' } } },
+    mottled: { name: 'Mottled desert world', desc: 'A dusty khaki rock world covered in cracked, wind-scoured plains, with countless paler patches of exposed bedrock and salt crust, and darker gritty lowlands.', p: {
+      geoRadius: 4200, landFraction: 0.5, highlandHeight: 900, lowlandHeight: -900, undulation: 900, roughness: 500, hillScale: 450, erodedLook: 1.6, fineRelief: 150, microRelief: 70, unitScale: 400, unitTone: 0.5, colorFray: 0.3, reliefColor: 0.25, broadRelief: 0.15,
+      cracks: 160, crackScale: 70, crackCover: 0.55, rubble: 60, craters: true, craterDensity: 0.02, oldCraters: 0.3, craterMax: 120, transitionDiameter: 8, craterDepth: 0.5,
+      pv1Style: 4, pv1Cover: 0.22, pv1Size: 2400, pv1Colour: 0.95, pv1Fil: 0, pv1Jag: 0.6, pv1Variety: 0.35, pv1Relief: 250, pv1Follow: 0, pv1Soft: 0,
+      pv2Style: 1, pv2Cover: 0.35, pv2Size: 3000, pv2Colour: 0.5, pv2Fil: 0, pv2Jag: 1, pv2Soft: 0.6, pv2Follow: 0.3, pv2Relief: -200,
+      heightColor: 0.25, regional: 0.2, regional2: 0.15, cliffColor: 0.2, curvatureColor: 0.04, hueLock: 0.6, colorVariation: 0.5,
+      colors: { low: '#8c7d5a', high: '#9a8a65', alt: '#a89772', alt2: '#7a6c4e', polar: '#9a8a65', hemi: '#9a8a65', cliff: '#b5a684', dark: '#5e5440', second: '#857656', bright: '#cdbb92', ice: '#ffffff', lava: '#000000', prov1: '#d6c39a', prov2: '#6f6448' } } },
+    opaline: { name: 'Opaline world', desc: 'An exotic mineral world in vivid blues: cobalt and indigo plains, lavender frost, pink and magenta evaporite flats, white salt crusts, turquoise lowlands and green copper-mineral basins.', p: {
+      geoRadius: 5500, landFraction: 0.5, highlandHeight: 1000, lowlandHeight: -1000, undulation: 1000, roughness: 500, hillScale: 600, erodedLook: 1.5, fineRelief: 150, microRelief: 60, unitScale: 600, unitTone: 0.4, colorFray: 0.35, reliefColor: 0.35,
+      cracks: 100, crackScale: 120, crackCover: 0.3, scarps: 400, scarpScale: 200, scarpLevels: 2, craters: true, craterDensity: 0.02, oldCraters: 0.2, craterMax: 150, transitionDiameter: 8, craterDepth: 0.5,
+      pv1Style: 3, pv1Cover: 0.18, pv1Size: 3500, pv1Colour: 0.75, pv1Fil: 0.5, pv1Stretch: 0.6, pv1Jag: 1.3, pv1Soft: 0.15, pv1Follow: 0, pv1LatBias: 0.6, pv1LatC: 10, pv1LatW: 30,
+      pv2Style: 3, pv2Cover: 0.2, pv2Size: 2500, pv2Colour: 0.7, pv2Fil: 0.8, pv2Jag: 2.2, pv2Variety: 0.7, pv2Follow: 0, pv2Soft: 0.05, pv2Stretch: 0.5,
+      pv3Style: 4, pv3Cover: 0.04, pv3Size: 2000, pv3Colour: 0.9, pv3Fil: 0, pv3Jag: 1.1, pv3Variety: 0.4, pv3Follow: 0, pv3Seed: 8,
+      heightColor: 0.35, regional: 0.35, regionalScale: 2, regional2: 0.25, cliffColor: 0.2, curvatureColor: 0.03, hueLock: 0, polarTint: 0.85, polarLat: 0.4, polarSide: -1, colorVariation: 1.1,
+      colors: { low: '#2b47a8', high: '#4762c4', alt: '#3a9cc0', alt2: '#6e5cc0', polar: '#3fae9c', hemi: '#5568c4', cliff: '#b8c2ec', dark: '#1c2466', second: '#2f8fa8', bright: '#e9eef8', ice: '#ffffff', lava: '#000000', prov1: '#d0607e', prov2: '#ecf0f6', prov3: '#5ac46a' } } },
     earth: { name: 'Earth-like', desc: 'Temperate ocean world: plate tectonics, eroded ranges, climate-driven biomes.', p: {} },
   };
 
